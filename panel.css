@@ -1213,8 +1213,18 @@ body.editorCompact .list{
 
 
 /* ===== テンプレタブ：編集不可 / 取り込み・コピー専用 ===== */
-body.listTabTpl .editorTagsRow,
+body.listTabTpl .editorTagsRow{
+  display:none !important;
+}
+
+/* Tempタブでは下部にクリアボタンだけを表示 */
 body.listTabTpl .editor .foot{
+  display:flex !important;
+}
+
+body.listTabTpl .editor .foot #btnAdd,
+body.listTabTpl .editor .foot #btnDelete,
+body.listTabTpl .editor .foot #btnBodyExpand{
   display:none !important;
 }
 
