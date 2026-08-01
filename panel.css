@@ -1243,10 +1243,7 @@ body.listTabTpl #body{
   cursor:copy !important;
 }
 
-body.listTabTpl #subj,
-body.listTabTpl #body{
-  background: color-mix(in srgb, var(--bg2) 86%, #ffffff 4%);
-}
+/* TempとNoteで件名・本文の背景色を共通化（共通の .in / .ta を使用） */
 
 /* テンプレタブでは「編集」ではなく、選択内容のコピー確認欄として見せる */
 body.listTabTpl .editor::before{
