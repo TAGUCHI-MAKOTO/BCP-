@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BCPアラート（分離版）",
-  "version": "1.0.2",
-  "description": "テン・メモからBCP機能のみを分離した独立版。地震情報、気象警報・注意報、台風情報、自動更新ON/OFF、通知、巡回間隔、警報のレベル順／新着順に対応。v1.0.2で注意報（レベル2）を黄色表示に変更。",
+  "version": "1.0.3",
+  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.3で新着時にEdgeのBCPアイコンへ赤い「!」バッジを表示し、サイドパネル表示で既読解除。",
   "permissions": [
     "storage",
     "sidePanel",
@@ -23,7 +23,7 @@
     }
   },
   "background": {
-    "service_worker": "service_worker_entry.js"
+    "service_worker": "background.js"
   },
   "side_panel": {
     "default_path": "panel.html"
