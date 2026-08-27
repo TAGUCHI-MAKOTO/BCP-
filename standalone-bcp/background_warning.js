@@ -115,7 +115,7 @@ async function refreshWarnings(){
 
         const isNewOrEscalated = initialized && previousLevel < warning.level;
         if (isNewOrEscalated){
-          await addAttention();
+          await addAttention("warning");
           if (settings.warningNotifications && warning.level >= 3){
             const location = [item.parentAreaName, item.areaName]
               .filter((name, index, values) => name && values.indexOf(name) === index)
