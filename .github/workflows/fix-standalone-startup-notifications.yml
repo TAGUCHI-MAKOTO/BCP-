@@ -1,0 +1,142 @@
+name: Fix standalone startup notifications
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-standalone-startup-notifications.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch startup quiet gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          bg_path = Path('standalone-bcp/background.js')
+          bg = bg_path.read_text(encoding='utf-8')
+
+          old_flag = 'let suppressOsNotifications = false;\n'
+          new_flag = '''let suppressOsNotifications = false;
+
+// v1.0.6: ブラウザ起動直後に期限超過アラームが先に発火しても、
+// 初回取り込みが終わるまではOS通知を出さない。
+const BCP_STARTUP_SESSION_KEY_V106 = "bcp_startup_session_v106";
+const BCP_STARTUP_QUIET_FALLBACK_MS_V106 = 60 * 1000;
+let bcpStartupQuietUntilV106 = Date.now() + BCP_STARTUP_QUIET_FALLBACK_MS_V106;
+
+const bcpStartupQuietGateV106 = (async () => {
+  try{
+    const data = await chrome.storage.session.get([BCP_STARTUP_SESSION_KEY_V106]);
+    if (data[BCP_STARTUP_SESSION_KEY_V106]){
+      // Service Workerの再起動だけなら、ブラウザ起動直後ではない。
+      bcpStartupQuietUntilV106 = 0;
+      return false;
+    }
+    await chrome.storage.session.set({ [BCP_STARTUP_SESSION_KEY_V106]: true });
+    return true;
+  }catch(_){
+    // 判定に失敗した場合は安全側に倒し、最大60秒だけ静音にする。
+    return true;
+  }
+})();
+
+async function bcpShouldSuppressOsNotificationV106(){
+  await bcpStartupQuietGateV106.catch(() => {});
+  return suppressOsNotifications || Date.now() < bcpStartupQuietUntilV106;
+}
+
+function bcpEndStartupQuietV106(){
+  bcpStartupQuietUntilV106 = 0;
+}
+'''
+          if old_flag not in bg:
+              raise SystemExit('suppress flag marker not found')
+          bg = bg.replace(old_flag, new_flag, 1)
+
+          old_notify = 'async function notify(title, message, url){\n  if (suppressOsNotifications) return;'
+          new_notify = 'async function notify(title, message, url){\n  if (await bcpShouldSuppressOsNotificationV106()) return;'
+          if old_notify not in bg:
+              raise SystemExit('notify marker not found')
+          bg = bg.replace(old_notify, new_notify, 1)
+
+          old_startup = '''async function startupRefresh(){
+  await initialize();
+  const settings = await getSettings();
+  if (settings.autoUpdateEnabled === false) return;
+
+  suppressOsNotifications = true;
+  try{
+    await Promise.allSettled([refreshQuakes(), refreshWarnings(), refreshCyclones()]);
+  }finally{
+    suppressOsNotifications = false;
+  }
+}'''
+          new_startup = '''async function startupRefresh(){
+  // initialize()中に期限超過アラームが割り込んでも通知しないよう、最初に静音化する。
+  suppressOsNotifications = true;
+  try{
+    await initialize();
+    const settings = await getSettings();
+    if (settings.autoUpdateEnabled === false) return;
+    await Promise.allSettled([refreshQuakes(), refreshWarnings(), refreshCyclones()]);
+  }finally{
+    suppressOsNotifications = false;
+    bcpEndStartupQuietV106();
+  }
+}'''
+          if old_startup not in bg:
+              raise SystemExit('startupRefresh marker not found')
+          bg = bg.replace(old_startup, new_startup, 1)
+          bg_path.write_text(bg, encoding='utf-8')
+
+          manifest_path = Path('standalone-bcp/manifest.json')
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          manifest['version'] = '1.0.6'
+          manifest['description'] = 'テン・メモからBCP機能のみを分離した単独版。v1.0.6でブラウザ起動直後の初回取り込みはOS通知を抑止し、以降の自動巡回・手動更新から通常通知するよう改善。'
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          node --check standalone-bcp/background.js
+          node --check standalone-bcp/panel.js
+          python -m json.tool standalone-bcp/manifest.json >/dev/null
+          test "$(find standalone-bcp -maxdepth 1 -type f | wc -l)" -eq 6
+
+      - name: Build standalone ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd standalone-bcp
+          zip -j ../temmemo_bcp_standalone_v1.0.6.zip \
+            manifest.json panel.html panel.css panel.js background.js icon48.png
+
+      - name: Upload standalone ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: temmemo-bcp-standalone-v1.0.6
+          path: temmemo_bcp_standalone_v1.0.6.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit fix and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-standalone-startup-notifications.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Suppress standalone BCP startup notification burst"
+          git push
