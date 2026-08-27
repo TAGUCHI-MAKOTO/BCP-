@@ -8,8 +8,43 @@ const BCP_STARTUP_REFRESH_NAMES = [
   "bcpWeatherRefreshCyclones",
 ];
 
+const BCP_AUTO_SETTINGS_KEY = "bcp2_settings";
+const BCP_AUTO_ALARM_NAMES = [
+  "bcp_refresh",
+  "bcp2_quake",
+  "bcp2_warning",
+  "bcp2_cyclone",
+];
+
 let bcpStartupSuppressDepth = 0;
 let bcpStartupPending = new Set();
+
+async function bcpAutoUpdateEnabled(){
+  try{
+    const data = await chrome.storage.local.get([BCP_AUTO_SETTINGS_KEY]);
+    return data[BCP_AUTO_SETTINGS_KEY]?.autoUpdateEnabled !== false;
+  }catch(_){
+    return true;
+  }
+}
+
+async function bcpClearAutoRefreshAlarms(){
+  await Promise.allSettled(
+    BCP_AUTO_ALARM_NAMES.map((name) => chrome.alarms.clear(name))
+  );
+}
+
+// service_worker.js の既存アラーム設定を包み、マスターSWがOFFなら3種の巡回を作成しない。
+if (typeof bcpWeatherSetupAlarms === "function"){
+  const bcpWeatherSetupAlarmsOriginal = bcpWeatherSetupAlarms;
+  bcpWeatherSetupAlarms = async function(...args){
+    if (!(await bcpAutoUpdateEnabled())){
+      await bcpClearAutoRefreshAlarms();
+      return;
+    }
+    return bcpWeatherSetupAlarmsOriginal.apply(this, args);
+  };
+}
 
 async function bcpStartupAttentionOnly(){
   try{
@@ -40,6 +75,13 @@ function bcpWrapStartupRefresh(name){
 
   globalThis[name] = async function(...args){
     const suppress = bcpStartupPending.delete(name);
+
+    // 自動更新OFF時は、起動・更新直後の自動取得そのものを行わない。
+    // 手動の「今すぐ更新」は startupPending を消費した後なので従来どおり実行できる。
+    if (suppress && !(await bcpAutoUpdateEnabled())){
+      return { ok: true, skipped: true, reason: "auto-update-off" };
+    }
+
     if (suppress) bcpStartupSuppressDepth += 1;
     try{
       return await original.apply(this, args);
