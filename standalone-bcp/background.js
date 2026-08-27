@@ -86,6 +86,35 @@ const JMA_WARNING_INFO = {
 
 let suppressOsNotifications = false;
 
+// v1.0.6: ブラウザ起動直後に期限超過アラームが先に発火しても、
+// 初回取り込みが終わるまではOS通知を出さない。
+const BCP_STARTUP_SESSION_KEY_V106 = "bcp_startup_session_v106";
+const BCP_STARTUP_QUIET_FALLBACK_MS_V106 = 60 * 1000;
+let bcpStartupQuietUntilV106 = Date.now() + BCP_STARTUP_QUIET_FALLBACK_MS_V106;
+
+const bcpStartupQuietGateV106 = (async () => {
+  try{
+    const data = await chrome.storage.session.get([BCP_STARTUP_SESSION_KEY_V106]);
+    if (data[BCP_STARTUP_SESSION_KEY_V106]){
+      bcpStartupQuietUntilV106 = 0;
+      return false;
+    }
+    await chrome.storage.session.set({ [BCP_STARTUP_SESSION_KEY_V106]: true });
+    return true;
+  }catch(_){
+    return true;
+  }
+})();
+
+async function bcpShouldSuppressOsNotificationV106(){
+  await bcpStartupQuietGateV106.catch(() => {});
+  return suppressOsNotifications || Date.now() < bcpStartupQuietUntilV106;
+}
+
+function bcpEndStartupQuietV106(){
+  bcpStartupQuietUntilV106 = 0;
+}
+
 function safeHttpUrl(value){
   try{
     const url = new URL(String(value || ""));
@@ -181,7 +210,7 @@ async function clearAttention(){
 }
 
 async function notify(title, message, url){
-  if (suppressOsNotifications) return;
+  if (await bcpShouldSuppressOsNotificationV106()) return;
 
   const id = `bcp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   try{
@@ -772,15 +801,16 @@ async function initialize(){
 }
 
 async function startupRefresh(){
-  await initialize();
-  const settings = await getSettings();
-  if (settings.autoUpdateEnabled === false) return;
-
+  // initialize()中に期限超過アラームが割り込んでも通知しないよう、最初に静音化する。
   suppressOsNotifications = true;
   try{
+    await initialize();
+    const settings = await getSettings();
+    if (settings.autoUpdateEnabled === false) return;
     await Promise.allSettled([refreshQuakes(), refreshWarnings(), refreshCyclones()]);
   }finally{
     suppressOsNotifications = false;
+    bcpEndStartupQuietV106();
   }
 }
 

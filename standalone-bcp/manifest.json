@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BCPアラート（分離版）",
-  "version": "1.0.5",
-  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.5で機能を維持したまま構成を6ファイルへ統合・簡素化。",
+  "version": "1.0.6",
+  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.6でブラウザ起動直後の初回取り込みはOS通知を抑止し、以降の自動巡回・手動更新から通常通知するよう改善。",
   "permissions": [
     "storage",
     "sidePanel",
