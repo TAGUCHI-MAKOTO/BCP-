@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BCPアラート（分離版）",
-  "version": "1.0.3",
-  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.3で新着時にEdgeのBCPアイコンへ赤い「!」バッジを表示し、サイドパネル表示で既読解除。",
+  "version": "1.0.4",
+  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.4で新着カテゴリのTab発光とカテゴリ別既読管理に対応。",
   "permissions": [
     "storage",
     "sidePanel",

@@ -212,7 +212,7 @@ chrome.notifications.onClicked.addListener(async (notificationId) => {
     if (url) chrome.tabs.create({ url });
     delete links[notificationId];
     await chrome.storage.local.set({ [STORE.notifLinks]: links });
-    await clearAttention();
+    // 通知を開いただけでは未読解除しない。該当BCP Tabを開いた時に解除する。
     chrome.notifications.clear(notificationId);
   }catch(_){ }
 });

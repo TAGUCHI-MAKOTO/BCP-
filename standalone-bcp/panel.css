@@ -35,6 +35,19 @@ h1{font-size:16px;margin:0;white-space:nowrap}
 .tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--panel)}
 .tab{border:1px solid var(--border);border-radius:8px;background:var(--panel2);color:var(--text);padding:8px 6px;font-weight:700;cursor:pointer}
 .tab.on{background:#26364d;border-color:#4b79b7}
+.tab.hasNew{
+  border-color:#facc15;
+  box-shadow:0 0 0 1px rgba(250,204,21,.75) inset,0 0 8px rgba(250,204,21,.75),0 0 16px rgba(245,158,11,.38);
+  animation:bcpTabGlow 1.35s ease-in-out infinite;
+}
+.tab.on.hasNew{background:#26364d;border-color:#facc15}
+@keyframes bcpTabGlow{
+  0%,100%{box-shadow:0 0 0 1px rgba(250,204,21,.55) inset,0 0 5px rgba(250,204,21,.45),0 0 10px rgba(245,158,11,.20)}
+  50%{box-shadow:0 0 0 1px rgba(253,224,71,.95) inset,0 0 11px rgba(253,224,71,.95),0 0 22px rgba(245,158,11,.58)}
+}
+@media (prefers-reduced-motion: reduce){
+  .tab.hasNew{animation:none;box-shadow:0 0 0 1px rgba(250,204,21,.85) inset,0 0 10px rgba(250,204,21,.8)}
+}
 .main{flex:1;min-height:0;overflow:hidden}
 .sourcePane{height:100%;display:flex;flex-direction:column;min-height:0}
 .sourcePane[hidden]{display:none!important}
