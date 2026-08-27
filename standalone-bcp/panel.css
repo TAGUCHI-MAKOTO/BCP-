@@ -51,6 +51,7 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
 .list{flex:1;min-height:0;overflow:auto;padding:9px;display:grid;gap:8px;align-content:start}
 .card{position:relative;border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:10px;box-shadow:0 2px 7px #0003}
 .card.quake.hit{background:#4b171b}
+.card.weather.level2{background:#4a3b00;border-color:#9a7b00}
 .card.weather.level3{background:#541b20}
 .card.weather.level4{background:#35185f}
 .card.weather.level5{background:#070707}
@@ -65,6 +66,7 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
 .grid .v{font-weight:650}
 .warningNames{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
 .warningName{font-size:11px;font-weight:750;padding:4px 7px;border-radius:6px;background:#3a414c}
+.warningName.level2{background:#8a6a00;color:#fff6bf}
 .warningName.level3{background:#7f1d1d}
 .warningName.level4{background:#5b21b6}
 .warningName.level5{background:#000}
@@ -82,11 +84,13 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
 @media (prefers-color-scheme: light){
   :root{--bg:#f4f6f8;--panel:#fff;--panel2:#f2f4f7;--border:#ccd2da;--text:#111827;--muted:#667085;--ended:#d2d5d9}
   .card.quake.hit{background:#fee2e2}
+  .card.weather.level2{background:#fef3c7;border-color:#eab308}
   .card.weather.level3{background:#fee2e2}
   .card.weather.level4{background:#ede9fe}
   .card.weather.level5{background:#1f2937;color:#fff}
   .card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#fee2e2}
   .warningName{background:#e5e7eb}
+  .warningName.level2{background:#fde68a;color:#713f12}
   .warningName.level3{background:#fecaca}
   .warningName.level4{background:#ddd6fe}
   .warningName.level5{background:#111827;color:#fff}
