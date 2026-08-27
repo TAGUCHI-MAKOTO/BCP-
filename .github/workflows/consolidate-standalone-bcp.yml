@@ -1,0 +1,81 @@
+name: Consolidate standalone BCP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/consolidate-standalone-bcp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Consolidate standalone BCP files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd standalone-bcp
+
+          cat \
+            background_core.js \
+            background_quake.js \
+            background_warning.js \
+            background_cyclone.js \
+            background_attention_v104.js \
+            background_main.js \
+            > background.js.new
+          mv background.js.new background.js
+
+          cat panel.js panel_badge.js > panel.js.new
+          mv panel.js.new panel.js
+
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          html_path = Path('panel.html')
+          html = html_path.read_text(encoding='utf-8')
+          html = html.replace('  <script src="panel.js"></script>\n  <script src="panel_badge.js"></script>', '  <script src="panel.js"></script>')
+          html_path.write_text(html, encoding='utf-8')
+
+          manifest_path = Path('manifest.json')
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          manifest['version'] = '1.0.5'
+          manifest['description'] = 'テン・メモからBCP機能のみを分離した単独版。v1.0.5で機能を維持したまま構成を6ファイルへ統合・簡素化。'
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          rm -f \
+            background_core.js \
+            background_quake.js \
+            background_warning.js \
+            background_cyclone.js \
+            background_attention_v104.js \
+            background_main.js \
+            panel_badge.js \
+            README.md
+          rm -rf icons
+
+          node --check background.js
+          node --check panel.js
+          python -m json.tool manifest.json >/dev/null
+
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 6
+
+      - name: Commit consolidated structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/consolidate-standalone-bcp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Simplify standalone BCP to six files"
+          git push
