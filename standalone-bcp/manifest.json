@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BCPアラート（分離版）",
+  "version": "1.0.0",
+  "description": "テン・メモからBCP機能のみを分離した独立版。地震情報、気象警報・注意報、台風情報、自動更新ON/OFF、通知、巡回間隔、警報のレベル順／新着順に対応。",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://www.jma.go.jp/*",
+    "https://www.data.jma.go.jp/*"
+  ],
+  "icons": {
+    "48": "icon48.png"
+  },
+  "action": {
+    "default_title": "BCPアラート",
+    "default_icon": {
+      "48": "icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "service_worker_entry.js"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  }
+}

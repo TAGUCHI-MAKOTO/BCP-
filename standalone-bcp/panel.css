@@ -1,0 +1,94 @@
+:root{
+  color-scheme: light dark;
+  --bg:#101317;
+  --panel:#171b21;
+  --panel2:#20262e;
+  --border:#343c47;
+  --text:#f3f4f6;
+  --muted:#a8b0bc;
+  --accent:#3b82f6;
+  --danger:#7f1d1d;
+  --purple:#4c1d95;
+  --blackwarn:#080808;
+  --ended:#42464d;
+  font-family:"Yu Gothic UI","Meiryo",system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text)}
+body{display:flex;flex-direction:column;overflow:hidden}
+button,input,select{font:inherit}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:10px 12px;border-bottom:1px solid var(--border);background:var(--panel);
+  position:relative;z-index:3
+}
+.titleWrap{display:flex;align-items:center;gap:8px;min-width:0}
+h1{font-size:16px;margin:0;white-space:nowrap}
+.attention{width:9px;height:9px;border-radius:50%;background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.18)}
+.autoSwitch{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer}
+.autoSwitch input{position:absolute;opacity:0;pointer-events:none}
+.switchTrack{position:relative;width:36px;height:20px;border-radius:999px;background:#6b7280;transition:.15s}
+.switchTrack::after{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 3px #0008}
+.autoSwitch input:checked + .switchTrack{background:#16a34a}
+.autoSwitch input:checked + .switchTrack::after{transform:translateX(16px)}
+.autoState{min-width:24px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--panel)}
+.tab{border:1px solid var(--border);border-radius:8px;background:var(--panel2);color:var(--text);padding:8px 6px;font-weight:700;cursor:pointer}
+.tab.on{background:#26364d;border-color:#4b79b7}
+.main{flex:1;min-height:0;overflow:hidden}
+.sourcePane{height:100%;display:flex;flex-direction:column;min-height:0}
+.controls{padding:9px 10px;border-bottom:1px solid var(--border);background:var(--panel);display:grid;gap:7px}
+.controlLine,.actionLine,.sortLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.check,.period,.sortLine label{font-size:12px;display:inline-flex;align-items:center;gap:5px}
+.period input{width:64px}
+input[type=number],select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px}
+.btn{border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:7px;padding:6px 10px;cursor:pointer}
+.btn:hover{filter:brightness(1.08)}
+.btn.primary{background:#1d4ed8;border-color:#3b82f6}
+.btn:disabled{opacity:.5;cursor:wait}
+.updated{font-size:11px;color:var(--muted);margin-left:auto}
+.list{flex:1;min-height:0;overflow:auto;padding:9px;display:grid;gap:8px;align-content:start}
+.card{position:relative;border:1px solid var(--border);border-radius:10px;background:var(--panel);padding:10px;box-shadow:0 2px 7px #0003}
+.card.quake.hit{background:#4b171b}
+.card.weather.level3{background:#541b20}
+.card.weather.level4{background:#35185f}
+.card.weather.level5{background:#070707}
+.card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#541b20}
+.card.cyclone.ended{background:var(--ended);opacity:.85}
+.badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 7px;border-radius:999px;background:#0005;margin-bottom:6px}
+.title{font-size:15px;font-weight:800;line-height:1.4}
+.areaTitle{font-size:12px;font-weight:700;color:#d1d5db;margin:2px 0 1px}
+.areaName{font-size:16px}
+.grid{display:grid;grid-template-columns:max-content 1fr;gap:4px 10px;margin-top:8px;font-size:12px}
+.grid .k{color:var(--muted)}
+.grid .v{font-weight:650}
+.warningNames{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.warningName{font-size:11px;font-weight:750;padding:4px 7px;border-radius:6px;background:#3a414c}
+.warningName.level3{background:#7f1d1d}
+.warningName.level4{background:#5b21b6}
+.warningName.level5{background:#000}
+.meta{margin-top:7px;font-size:11px;color:var(--muted)}
+.actions{margin-top:8px}
+.link{border:0;background:transparent;color:#93c5fd;text-decoration:underline;padding:0;cursor:pointer;font-size:12px}
+.forecasts{margin-top:8px;border-top:1px dashed #ffffff35;padding-top:7px}
+.forecasts summary{cursor:pointer;font-size:12px;font-weight:700}
+.forecast{padding:6px 0;border-bottom:1px solid #ffffff18;font-size:11px}
+.forecastTime{font-weight:700;margin-bottom:2px}
+.empty,.error{border:1px dashed var(--border);border-radius:9px;padding:14px;color:var(--muted);background:var(--panel)}
+.error{color:#fecaca;border-color:#7f1d1d}
+.toast{position:fixed;right:10px;top:54px;z-index:20;padding:7px 10px;border-radius:7px;background:#111827e8;color:#fff;font-size:12px;pointer-events:none;opacity:0;transition:.15s}
+.toast.show{opacity:1}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f4f6f8;--panel:#fff;--panel2:#f2f4f7;--border:#ccd2da;--text:#111827;--muted:#667085;--ended:#d2d5d9}
+  .card.quake.hit{background:#fee2e2}
+  .card.weather.level3{background:#fee2e2}
+  .card.weather.level4{background:#ede9fe}
+  .card.weather.level5{background:#1f2937;color:#fff}
+  .card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#fee2e2}
+  .warningName{background:#e5e7eb}
+  .warningName.level3{background:#fecaca}
+  .warningName.level4{background:#ddd6fe}
+  .warningName.level5{background:#111827;color:#fff}
+  .badge{background:#00000012}
+  .link{color:#1d4ed8}
+}

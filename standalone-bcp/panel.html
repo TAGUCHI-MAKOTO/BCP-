@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BCPアラート</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="titleWrap">
+      <span id="bcpAttention" class="attention" hidden aria-label="未確認のBCP情報あり"></span>
+      <h1>🚨 BCPアラート</h1>
+    </div>
+    <label class="autoSwitch" title="地震・気象警報・台風の自動巡回をまとめてON/OFFします。OFFでも手動更新できます。">
+      <span>自動更新</span>
+      <input id="bcpAutoUpdate" type="checkbox">
+      <span class="switchTrack" aria-hidden="true"></span>
+      <span id="bcpAutoState" class="autoState">ON</span>
+    </label>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="BCP情報">
+    <button id="tabQuake" class="tab on" type="button" role="tab" aria-selected="true">地震情報</button>
+    <button id="tabWarning" class="tab" type="button" role="tab" aria-selected="false">気象警報</button>
+    <button id="tabCyclone" class="tab" type="button" role="tab" aria-selected="false">台風情報</button>
+  </nav>
+
+  <main class="main">
+    <section id="paneQuake" class="sourcePane">
+      <div class="controls">
+        <div class="controlLine">
+          <label class="check"><input id="quakeNotify" type="checkbox"> 通知を有効</label>
+          <label class="period">巡回(分)<input id="quakePeriod" type="number" min="1" step="1"></label>
+        </div>
+        <div class="actionLine">
+          <button id="quakeSave" class="btn primary" type="button">保存</button>
+          <button id="quakeRefresh" class="btn" type="button">今すぐ更新</button>
+          <span id="quakeUpdated" class="updated"></span>
+        </div>
+      </div>
+      <div id="quakeList" class="list"></div>
+    </section>
+
+    <section id="paneWarning" class="sourcePane" hidden>
+      <div class="controls">
+        <div class="controlLine">
+          <label class="check"><input id="warningNotify" type="checkbox"> 通知を有効</label>
+          <label class="check"><input id="showAdvisory" type="checkbox"> 注意報も表示</label>
+          <label class="period">巡回(分)<input id="warningPeriod" type="number" min="1" step="1"></label>
+        </div>
+        <div class="sortLine">
+          <label>並び順
+            <select id="warningSort">
+              <option value="level">レベル順</option>
+              <option value="newest">新着順</option>
+            </select>
+          </label>
+        </div>
+        <div class="actionLine">
+          <button id="warningSave" class="btn primary" type="button">保存</button>
+          <button id="warningRefresh" class="btn" type="button">今すぐ更新</button>
+          <span id="warningUpdated" class="updated"></span>
+        </div>
+      </div>
+      <div id="warningList" class="list"></div>
+    </section>
+
+    <section id="paneCyclone" class="sourcePane" hidden>
+      <div class="controls">
+        <div class="controlLine">
+          <label class="check"><input id="cycloneNotify" type="checkbox"> 通知を有効</label>
+          <label class="period">巡回(分)<input id="cyclonePeriod" type="number" min="1" step="1"></label>
+        </div>
+        <div class="actionLine">
+          <button id="cycloneSave" class="btn primary" type="button">保存</button>
+          <button id="cycloneRefresh" class="btn" type="button">今すぐ更新</button>
+          <span id="cycloneUpdated" class="updated"></span>
+        </div>
+      </div>
+      <div id="cycloneList" class="list"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script src="panel.js"></script>
+</body>
+</html>
