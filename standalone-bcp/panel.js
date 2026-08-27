@@ -304,8 +304,9 @@ async function changeAutoUpdate(){
   const toggle = $("bcpAutoUpdate");
   const state = $("bcpAutoState");
   if (!toggle) return;
+  // 見た目は即座に確定させ、保存処理だけ裏で行う。
+  if (state) state.textContent = toggle.checked ? "ON" : "OFF";
   toggle.disabled = true;
-  if (state) state.textContent = "保存中";
   try{
     const data = await chrome.storage.local.get([STORE.settings]);
     const settings = {

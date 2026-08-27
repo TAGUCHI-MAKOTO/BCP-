@@ -96,8 +96,8 @@
         outline-offset: 2px;
       }
       .bcpEnhanceAuto input:disabled + .bcpEnhanceTrack {
-        opacity: .55;
-        cursor: wait;
+        opacity: 1;
+        cursor: default;
       }
       .bcpEnhanceAutoState {
         min-width: 24px;
@@ -141,8 +141,9 @@
 
   async function saveAutoUpdate(enabled){
     const toggle = $("bcpAutoUpdateToggle");
+    // 見た目は即座に確定させ、保存処理だけ裏で行う。
+    renderAutoState(enabled);
     if (toggle) toggle.disabled = true;
-    renderAutoState(enabled, "保存中");
 
     try{
       // service_worker.js の saveSettings は通知設定も正規化するため、

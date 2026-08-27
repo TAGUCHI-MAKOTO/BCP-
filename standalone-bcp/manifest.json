@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BCPアラート（分離版）",
-  "version": "1.0.7",
-  "description": "テン・メモからBCP機能のみを分離した単独版。v1.0.7で自動更新ON/OFF切替時の成功メッセージ表示を廃止。",
+  "version": "1.0.8",
+  "description": "BCP分離版。v1.0.8で自動更新ON/OFF切替時の「保存中」表示を廃止し、スイッチが即座に自然に切り替わるよう改善。",
   "permissions": [
     "storage",
     "sidePanel",
