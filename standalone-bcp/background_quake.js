@@ -105,7 +105,7 @@ async function refreshQuakes(){
       const previous = Number(levels[item.id]?.score ?? levels[item.id] ?? 0);
       const isNewRelevantQuake = initialized && score >= NOTIFY_MIN_INTENSITY && previous < score;
       if (isNewRelevantQuake){
-        await addAttention();
+        await addAttention("quake");
         if (settings.quakeNotifications){
           await notify(`地震情報: ${item.maxIntensity}`, quakeMessage(item), item.link);
         }
