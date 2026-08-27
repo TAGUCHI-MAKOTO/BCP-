@@ -1,0 +1,44 @@
+name: Build download ZIPs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-download-zips.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ZIPs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd temmemo && zip -r ../temmemo_v1.3.136.zip .)
+          (cd standalone-bcp && zip -r ../temmemo_bcp_standalone_v1.0.7.zip .)
+
+      - name: Upload ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: temmemo-download-zips
+          path: |
+            temmemo_v1.3.136.zip
+            temmemo_bcp_standalone_v1.0.7.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/build-download-zips.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove one-time ZIP build workflow"
+          git push
