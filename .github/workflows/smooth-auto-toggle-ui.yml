@@ -25,47 +25,30 @@ jobs:
           from pathlib import Path
           import json
 
-          # テンメモ本体: 保存中の文字切替とスイッチの薄暗化をなくす
           path = Path('temmemo/bcp_enhancements.js')
           text = path.read_text(encoding='utf-8')
-          old_css = '''      .bcpEnhanceAuto input:disabled + .bcpEnhanceTrack {
-        opacity: .55;
-        cursor: wait;
-      }'''
-          new_css = '''      .bcpEnhanceAuto input:disabled + .bcpEnhanceTrack {
-        opacity: 1;
-        cursor: default;
-      }'''
+          old_css = "      .bcpEnhanceAuto input:disabled + .bcpEnhanceTrack {\n        opacity: .55;\n        cursor: wait;\n      }"
+          new_css = "      .bcpEnhanceAuto input:disabled + .bcpEnhanceTrack {\n        opacity: 1;\n        cursor: default;\n      }"
           if old_css not in text:
               raise SystemExit('temmemo disabled style marker not found')
           text = text.replace(old_css, new_css, 1)
 
-          old_save = '''    const toggle = $("bcpAutoUpdateToggle");
-    if (toggle) toggle.disabled = true;
-    renderAutoState(enabled, "保存中");'''
-          new_save = '''    const toggle = $("bcpAutoUpdateToggle");
-    // 見た目は即座に確定させ、保存処理だけ裏で行う。
-    renderAutoState(enabled);
-    if (toggle) toggle.disabled = true;'''
+          old_save = "    const toggle = $(\"bcpAutoUpdateToggle\");\n    if (toggle) toggle.disabled = true;\n    renderAutoState(enabled, \"保存中\");"
+          new_save = "    const toggle = $(\"bcpAutoUpdateToggle\");\n    // 見た目は即座に確定させ、保存処理だけ裏で行う。\n    renderAutoState(enabled);\n    if (toggle) toggle.disabled = true;"
           if old_save not in text:
               raise SystemExit('temmemo save marker not found')
           text = text.replace(old_save, new_save, 1)
           path.write_text(text, encoding='utf-8')
 
-          # 分離版: 「保存中」表示を挟まず、ON/OFFを即時表示
           path = Path('standalone-bcp/panel.js')
           text = path.read_text(encoding='utf-8')
-          old = '''  toggle.disabled = true;
-  if (state) state.textContent = "保存中";'''
-          new = '''  // 見た目は即座に確定させ、保存処理だけ裏で行う。
-  if (state) state.textContent = toggle.checked ? "ON" : "OFF";
-  toggle.disabled = true;'''
+          old = "  toggle.disabled = true;\n  if (state) state.textContent = \"保存中\";"
+          new = "  // 見た目は即座に確定させ、保存処理だけ裏で行う。\n  if (state) state.textContent = toggle.checked ? \"ON\" : \"OFF\";\n  toggle.disabled = true;"
           if old not in text:
               raise SystemExit('standalone toggle marker not found')
           text = text.replace(old, new, 1)
           path.write_text(text, encoding='utf-8')
 
-          # version bump
           manifest_path = Path('temmemo/manifest.json')
           manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
           manifest['version'] = '1.3.137'
