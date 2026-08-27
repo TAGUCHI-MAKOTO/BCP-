@@ -140,7 +140,7 @@ async function refreshCyclones(){
       );
 
       if (stateChanged){
-        await addAttention();
+        await addAttention("cyclone");
       }
 
       if (initialized && settings.cycloneNotifications && !item.ended){
