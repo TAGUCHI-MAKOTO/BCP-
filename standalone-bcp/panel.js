@@ -316,7 +316,6 @@ async function changeAutoUpdate(){
     const result = await send("saveSettings", { settings });
     if (!result?.ok) throw new Error(result?.error || "切替失敗");
     if (state) state.textContent = toggle.checked ? "ON" : "OFF";
-    toast(toggle.checked ? "BCP自動更新：ON" : "BCP自動更新：OFF");
   }catch(error){
     const data = await chrome.storage.local.get([STORE.settings]).catch(() => ({}));
     const enabled = data?.[STORE.settings]?.autoUpdateEnabled !== false;

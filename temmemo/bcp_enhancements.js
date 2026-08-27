@@ -158,7 +158,6 @@
         throw new Error(response?.error || "設定保存に失敗しました");
       }
       renderAutoState(enabled);
-      showToast(enabled ? "BCP自動更新：ON" : "BCP自動更新：OFF");
     }catch(error){
       const current = await getSettings().catch(() => DEFAULT_SETTINGS);
       renderAutoState(current.autoUpdateEnabled !== false, "ERR");
