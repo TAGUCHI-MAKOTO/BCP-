@@ -1,0 +1,100 @@
+name: Standalone rename and cyclone fix v1.0.12
+
+on:
+  push:
+    paths:
+      - '.github/workflows/standalone-rename-cyclone-v1012.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          # panel.html: user-facing name
+          p = Path('standalone-bcp/panel.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<title>BCPアラート</title>', '<title>警報お知らせくん</title>')
+          s = s.replace('<h1>BCPアラート</h1>', '<h1>警報お知らせくん</h1>')
+          assert '<title>警報お知らせくん</title>' in s
+          assert '<h1>警報お知らせくん</h1>' in s
+          p.write_text(s, encoding='utf-8')
+
+          # background.js: toolbar title + notification fallback name
+          p = Path('standalone-bcp/background.js')
+          s = p.read_text(encoding='utf-8')
+          assert 'chrome.action.setTitle({ title: "BCPアラート" })' in s
+          assert 'title: String(title || "BCPアラート")' in s
+          s = s.replace('chrome.action.setTitle({ title: "BCPアラート" })', 'chrome.action.setTitle({ title: "警報お知らせくん" })')
+          s = s.replace('title: String(title || "BCPアラート")', 'title: String(title || "警報お知らせくん")')
+          p.write_text(s, encoding='utf-8')
+
+          # panel.css: all active typhoons red, ended stays gray
+          p = Path('standalone-bcp/panel.css')
+          s = p.read_text(encoding='utf-8')
+          dark_old = '.card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#541b20}'
+          light_old = '.card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#fee2e2}'
+          assert dark_old in s
+          assert light_old in s
+          s = s.replace(dark_old, '.card.cyclone:not(.ended){background:#541b20}')
+          s = s.replace(light_old, '.card.cyclone:not(.ended){background:#fee2e2}')
+          p.write_text(s, encoding='utf-8')
+
+          # manifest: rename + bump version
+          p = Path('standalone-bcp/manifest.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert data.get('version') == '1.0.11'
+          data['name'] = '警報お知らせくん'
+          data['version'] = '1.0.12'
+          if isinstance(data.get('action'), dict):
+              data['action']['default_title'] = '警報お知らせくん'
+          prefix = '分離版の名称を「警報お知らせくん」へ変更。台風カードの色設定漏れを修正し、活動中の台風は強さに関係なく赤系背景、終了した台風は従来どおりグレー表示。 / '
+          data['description'] = prefix + data.get('description', '')
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          node --check standalone-bcp/background.js
+          node --check standalone-bcp/panel.js
+          python -m json.tool standalone-bcp/manifest.json >/dev/null
+          grep -q '"version": "1.0.12"' standalone-bcp/manifest.json
+          grep -q '"name": "警報お知らせくん"' standalone-bcp/manifest.json
+          grep -q '<h1>警報お知らせくん</h1>' standalone-bcp/panel.html
+          grep -q '.card.cyclone:not(.ended){background:#541b20}' standalone-bcp/panel.css
+          grep -q '.card.cyclone:not(.ended){background:#fee2e2}' standalone-bcp/panel.css
+          grep -q '警報お知らせくん' standalone-bcp/background.js
+
+      - name: Build ZIP
+        shell: bash
+        run: |
+          zip -qr keihou-oshirasekun_v1.0.12.zip standalone-bcp
+          unzip -t keihou-oshirasekun_v1.0.12.zip >/dev/null
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: keihou-oshirasekun-v1.0.12
+          path: keihou-oshirasekun_v1.0.12.zip
+
+      - name: Commit
+        shell: bash
+        run: |
+          rm -f keihou-oshirasekun_v1.0.12.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/standalone-rename-cyclone-v1012.yml
+          git add standalone-bcp/background.js standalone-bcp/panel.css standalone-bcp/panel.html standalone-bcp/manifest.json
+          git commit -m "Rename standalone alert app and fix cyclone card colors"
+          git push
