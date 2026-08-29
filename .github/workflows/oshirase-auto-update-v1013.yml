@@ -1,0 +1,97 @@
+name: Oshirasakun auto update v1.0.13
+
+on:
+  push:
+    paths:
+      - '.github/workflows/oshirase-auto-update-v1013.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch alarm handling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json, re
+
+          bg = Path('standalone-bcp/background.js')
+          text = bg.read_text(encoding='utf-8')
+
+          pattern = re.compile(r'''async function setupAlarms\(\)\{.*?\n\}''', re.S)
+          replacement = r'''async function setupAlarms(){
+            const settings = await getSettings();
+            const names = ["bcp2_quake", "bcp2_warning", "bcp2_cyclone"];
+
+            if (settings.autoUpdateEnabled === false){
+              await Promise.allSettled(names.map((name) => chrome.alarms.clear(name)));
+              return;
+            }
+
+            const desired = {
+              bcp2_quake: Math.max(1, Number(settings.quakePeriodMinutes) || 5),
+              bcp2_warning: Math.max(1, Number(settings.warningPeriodMinutes) || 10),
+              bcp2_cyclone: Math.max(1, Number(settings.cyclonePeriodMinutes) || 10)
+            };
+
+            for (const [name, periodInMinutes] of Object.entries(desired)){
+              const current = await chrome.alarms.get(name).catch(() => null);
+              const currentPeriod = Number(current?.periodInMinutes || 0);
+              if (current && Math.abs(currentPeriod - periodInMinutes) < 0.001) continue;
+              if (current) await chrome.alarms.clear(name);
+              chrome.alarms.create(name, { periodInMinutes });
+            }
+          }'''
+
+          text2, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+            raise SystemExit(f'setupAlarms replacement count={count}')
+          bg.write_text(text2, encoding='utf-8')
+
+          mf = Path('standalone-bcp/manifest.json')
+          data = json.loads(mf.read_text(encoding='utf-8'))
+          if data.get('version') != '1.0.12':
+            raise SystemExit(f"unexpected version {data.get('version')}")
+          data['version'] = '1.0.13'
+          data['description'] = '自動更新のアラーム管理を修正。Service Worker起動のたびに全アラームを削除・再作成せず、OFF時のみ解除し、ON時は未登録または巡回周期が変わったアラームだけ再作成することで、自動更新予定時刻の後ろ倒しを防止。 / ' + data.get('description','')
+          mf.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          node --check standalone-bcp/background.js
+          node --check standalone-bcp/panel.js
+          python -m json.tool standalone-bcp/manifest.json >/dev/null
+          grep -q '"version": "1.0.13"' standalone-bcp/manifest.json
+          grep -q 'chrome.alarms.get(name)' standalone-bcp/background.js
+          grep -q 'settings.autoUpdateEnabled === false' standalone-bcp/background.js
+
+      - name: Build ZIP
+        shell: bash
+        run: |
+          zip -qr keihou-oshirasekun_v1.0.13.zip standalone-bcp
+          unzip -t keihou-oshirasekun_v1.0.13.zip >/dev/null
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: keihou-oshirasekun-v1.0.13
+          path: keihou-oshirasekun_v1.0.13.zip
+
+      - name: Commit
+        shell: bash
+        run: |
+          rm -f keihou-oshirasekun_v1.0.13.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/oshirase-auto-update-v1013.yml
+          git add standalone-bcp/background.js standalone-bcp/manifest.json
+          git commit -m "Fix Oshirasakun automatic update alarms"
+          git push
