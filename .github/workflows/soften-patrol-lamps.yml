@@ -1,0 +1,153 @@
+name: Soften patrol lamps
+
+on:
+  push:
+    paths:
+      - '.github/workflows/soften-patrol-lamps.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch patrol lamp animation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          # テンメモ: 通常attentionと起動時attentionの両方を柔らかい明滅へ統一
+          p = Path('temmemo/panel.css')
+          css = p.read_text(encoding='utf-8')
+          marker = '/* v1.3.142: softer BCP patrol lamp */'
+          assert marker not in css
+          css += r'''
+
+/* v1.3.142: softer BCP patrol lamp */
+@keyframes bcpPatrolLampSoftV142{
+  0%,100%{
+    background:rgba(239,68,68,.05);
+    box-shadow:0 0 0 1px rgba(239,68,68,.34),0 0 4px rgba(239,68,68,.16);
+    opacity:.84;
+    filter:brightness(.98);
+  }
+  50%{
+    background:rgba(239,68,68,.15);
+    box-shadow:0 0 0 1px rgba(239,68,68,.62),0 0 8px rgba(239,68,68,.34);
+    opacity:1;
+    filter:brightness(1.08);
+  }
+}
+#btnBcp.reqEmpty,
+#btnBcp.bcpStartupAttention{
+  border-color:rgba(239,68,68,.78) !important;
+  animation:bcpPatrolLampSoftV142 1.35s ease-in-out infinite !important;
+}
+@media (prefers-reduced-motion:reduce){
+  #btnBcp.reqEmpty,
+  #btnBcp.bcpStartupAttention{
+    animation:none !important;
+    background:rgba(239,68,68,.10) !important;
+    box-shadow:0 0 0 1px rgba(239,68,68,.50) !important;
+    opacity:1 !important;
+    filter:none !important;
+  }
+}
+'''
+          p.write_text(css, encoding='utf-8')
+
+          # お知らせくん: ストロボ状の点滅をやめ、同じ柔らかい呼吸感へ
+          p = Path('standalone-bcp/panel.css')
+          css = p.read_text(encoding='utf-8')
+          marker2 = '/* v1.0.14: softer patrol lamp */'
+          assert marker2 not in css
+          css += r'''
+
+/* v1.0.14: softer patrol lamp */
+@keyframes oshirasePatrolSoftV1014{
+  0%,100%{
+    background:rgba(127,29,29,.08);
+    box-shadow:0 0 0 1px rgba(239,68,68,.34),0 0 4px rgba(239,68,68,.16);
+    opacity:.84;
+    filter:brightness(.98);
+  }
+  50%{
+    background:rgba(127,29,29,.20);
+    box-shadow:0 0 0 1px rgba(239,68,68,.62),0 0 8px rgba(239,68,68,.34);
+    opacity:1;
+    filter:brightness(1.08);
+  }
+}
+.patrolLamp.isAlert{
+  border-color:rgba(239,68,68,.78);
+  animation:oshirasePatrolSoftV1014 1.35s ease-in-out infinite;
+}
+@media (prefers-reduced-motion:reduce){
+  .patrolLamp.isAlert{
+    animation:none !important;
+    background:rgba(127,29,29,.14) !important;
+    box-shadow:0 0 0 1px rgba(239,68,68,.50) !important;
+    opacity:1 !important;
+    filter:none !important;
+  }
+}
+'''
+          p.write_text(css, encoding='utf-8')
+
+          # version bump
+          p = Path('temmemo/manifest.json')
+          m = json.loads(p.read_text(encoding='utf-8'))
+          assert m.get('version') == '1.3.141'
+          m['version'] = '1.3.142'
+          m['description'] = '🚨の点滅をストロボ状の強い点滅から、約1.35秒周期の柔らかい明滅へ変更。判定・解除ルールは従来どおり。 / ' + m.get('description','')
+          p.write_text(json.dumps(m, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          p = Path('standalone-bcp/manifest.json')
+          m = json.loads(p.read_text(encoding='utf-8'))
+          assert m.get('version') == '1.0.13'
+          m['version'] = '1.0.14'
+          m['description'] = '🚨の点滅をストロボ状の強い点滅から、約1.35秒周期の柔らかい明滅へ変更。判定・解除ルールは従来どおり。 / ' + m.get('description','')
+          p.write_text(json.dumps(m, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          python -m json.tool temmemo/manifest.json >/dev/null
+          python -m json.tool standalone-bcp/manifest.json >/dev/null
+          grep -q '"version": "1.3.142"' temmemo/manifest.json
+          grep -q '"version": "1.0.14"' standalone-bcp/manifest.json
+          grep -q 'bcpPatrolLampSoftV142' temmemo/panel.css
+          grep -q 'oshirasePatrolSoftV1014' standalone-bcp/panel.css
+
+      - name: Build ZIPs
+        shell: bash
+        run: |
+          zip -qr temmemo_v1.3.142.zip temmemo
+          zip -qr keihou-oshirasekun_v1.0.14.zip standalone-bcp
+          unzip -t temmemo_v1.3.142.zip >/dev/null
+          unzip -t keihou-oshirasekun_v1.0.14.zip >/dev/null
+
+      - name: Upload ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: soft-patrol-lamp-zips
+          path: |
+            temmemo_v1.3.142.zip
+            keihou-oshirasekun_v1.0.14.zip
+
+      - name: Commit and remove workflow
+        shell: bash
+        run: |
+          rm -f temmemo_v1.3.142.zip keihou-oshirasekun_v1.0.14.zip
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/soften-patrol-lamps.yml
+          git add temmemo/panel.css temmemo/manifest.json standalone-bcp/panel.css standalone-bcp/manifest.json
+          git commit -m "Soften patrol lamp blinking"
+          git push
