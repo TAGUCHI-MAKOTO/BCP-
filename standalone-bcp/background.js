@@ -174,14 +174,12 @@ async function setError(kind, message){
   await chrome.storage.local.set({ [STORE.errors]: errors });
 }
 
-async function syncActionBadge(attention){
-  const active = Number(attention?.count || 0) > 0;
+async function syncActionBadge(_attention){
+  // v1.0.11: Edgeツールバーの「!」バッジは廃止。
+  // 未確認の重要事象はサイドパネル内の🚨で知らせる。
   try{
-    await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
-    await chrome.action.setBadgeText({ text: active ? "!" : "" });
-    await chrome.action.setTitle({
-      title: active ? "BCPアラート（新着あり）" : "BCPアラート"
-    });
+    await chrome.action.setBadgeText({ text: "" });
+    await chrome.action.setTitle({ title: "BCPアラート" });
   }catch(_){ }
 }
 
@@ -719,7 +717,7 @@ function bcpAttentionLevel(value){
 function bcpAttentionValue(level){
   return Number(level) >= 2 ? "alert" : Number(level) === 1 ? "update" : false;
 }
-function bcpNormalizeAttentionV109(attention){
+function bcpNormalizeAttentionV111(attention){
   const raw=attention&&typeof attention==="object"?attention:{};
   const q=bcpAttentionLevel(raw.quake),w=bcpAttentionLevel(raw.warning),c=bcpAttentionLevel(raw.cyclone);
   const count=[q,w,c].filter((v)=>v>0).length;
@@ -733,9 +731,9 @@ addAttention=async function(kind,severity){
   const incoming=bcpAttentionLevel(severity);
   if (!incoming) return;
   const data=await chrome.storage.local.get([STORE.attention]);
-  const current=bcpNormalizeAttentionV109(data[STORE.attention]);
+  const current=bcpNormalizeAttentionV111(data[STORE.attention]);
   const merged=Math.max(bcpAttentionLevel(current[kind]),incoming);
-  const next=bcpNormalizeAttentionV109({...current,[kind]:bcpAttentionValue(merged),lastAt:Date.now()});
+  const next=bcpNormalizeAttentionV111({...current,[kind]:bcpAttentionValue(merged),lastAt:Date.now()});
   next.lastAt=Date.now();
   await chrome.storage.local.set({[STORE.attention]:next});
   await syncActionBadge(next);
@@ -748,8 +746,8 @@ clearAttention=async function(kind){
     category=data[STORE.view]==="warning"?"warning":data[STORE.view]==="cyclone"?"cyclone":"quake";
   }
   const data=await chrome.storage.local.get([STORE.attention]);
-  const current=bcpNormalizeAttentionV109(data[STORE.attention]);
-  const next=bcpNormalizeAttentionV109({...current,[category]:false});
+  const current=bcpNormalizeAttentionV111(data[STORE.attention]);
+  const next=bcpNormalizeAttentionV111({...current,[category]:false});
   if (next.count>0) next.lastAt=current.lastAt||Date.now();
   await chrome.storage.local.set({[STORE.attention]:next});
   await syncActionBadge(next);
@@ -788,7 +786,12 @@ function bcpStandaloneWarningSeverity(oldData,newData){
   const oldMap=bcpStandaloneWarningMap(oldData),newMap=bcpStandaloneWarningMap(newData); let severity=0;
   for (const [key,current] of newMap){
     const previous=oldMap.get(key);
-    if (!previous) return 2;
+    if (!previous){
+      // テンメモ準拠: 新規の警報以上は赤、新規注意報は黄色。
+      if (Number(current.level||0)>=3) return 2;
+      severity=Math.max(severity,1);
+      continue;
+    }
     if (current.level>previous.level) return 2;
     if (current.level!==previous.level||current.code!==previous.code||current.name!==previous.name||current.status!==previous.status||current.reportDatetime!==previous.reportDatetime) severity=Math.max(severity,1);
   }

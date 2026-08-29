@@ -30,6 +30,23 @@ let warningSortMode = "level";
 let lastWarningData = { items: [] };
 let lastWarningError = null;
 
+function patrolLevel(value){
+  if (value===true) return 2;
+  if (value==="alert"||value==="red"||Number(value)>=2) return 2;
+  if (value==="update"||value==="yellow"||Number(value)===1) return 1;
+  return 0;
+}
+
+function renderPatrolLamp(attention){
+  const raw=attention&&typeof attention==="object"?attention:{};
+  const hasRed=[raw.quake,raw.warning,raw.cyclone].some((value)=>patrolLevel(value)>=2);
+  const lamp=$("bcpPatrolLamp");
+  if (!lamp) return;
+  lamp.classList.toggle("isAlert",hasRed);
+  lamp.setAttribute("aria-label",hasRed?"未確認の重要BCP情報あり":"未確認の重要BCP情報なし");
+  lamp.title=hasRed?"重要な未確認情報があります":"重要な未確認情報はありません";
+}
+
 function formatDate(value){
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? String(value || "") : date.toLocaleString("ja-JP");
@@ -384,7 +401,7 @@ async function loadAndRender({ hydrate=false }={}){
   renderCyclones(cyclones, errors.cyclone);
 
   const attention = data[STORE.attention] || { count: 0 };
-  $("bcpAttention").hidden = Number(attention.count || 0) <= 0;
+  renderPatrolLamp(attention);
 }
 
 function wire(){
@@ -439,9 +456,8 @@ function wire(){
 document.addEventListener("DOMContentLoaded", async () => {
   wire();
   await loadAndRender({ hydrate: true });
-  // v1.0.10: 起動時に全カテゴリを一括既読にしない。
-  // 未読は各Tabを実際に確認した時だけカテゴリ単位で解除する。
-  if ($("bcpAttention")) $("bcpAttention").hidden = true;
+  // v1.0.11: 起動時も未読は各Tabを確認した時だけカテゴリ単位で解除する。
+  // 赤Tabが1つでも未確認なら、パネル上部の🚨を点滅させる。
 });
 "use strict";
 (()=>{
