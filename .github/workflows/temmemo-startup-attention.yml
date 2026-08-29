@@ -28,32 +28,22 @@ jobs:
           path = Path("temmemo/service_worker_entry.js")
           text = path.read_text(encoding="utf-8")
 
-          old = '''const bcpNotifyOriginal = bcpNotify;
-          bcpNotify = async function(title, message, url){
-            if (bcpStartupSuppressDepth > 0){
-              await bcpStartupAttentionOnly();
-              return;
-            }
-            return bcpNotifyOriginal(title, message, url);
-          };
-          '''
-          new = '''const bcpNotifyOriginal = bcpNotify;
+          start = text.find("const bcpNotifyOriginal = bcpNotify;")
+          end = text.find("for (const name of BCP_STARTUP_REFRESH_NAMES){", start)
+          if start < 0 or end < 0:
+              raise SystemExit("startup wrapper section not found")
+
+          replacement = r'''const bcpNotifyOriginal = bcpNotify;
           bcpNotify = async function(title, message, url){
             if (bcpStartupSuppressDepth > 0){
               // 起動直後の初回巡回ではOS通知を出さない。
-              // 🚨は下段の「起動時の新規重要事象」判定だけで点滅させる。
+              // 🚨は「起動時の新規重要事象」判定だけで点滅させる。
               return;
             }
             return bcpNotifyOriginal(title, message, url);
           };
-          '''
-          if old not in text:
-              raise SystemExit("startup notify wrapper marker not found")
-          text = text.replace(old, new, 1)
 
-          marker = '''function bcpWrapStartupRefresh(name){
-          '''
-          insert = '''const BCP_STARTUP_KIND_BY_REFRESH = {
+          const BCP_STARTUP_KIND_BY_REFRESH = {
             bcpWeatherRefreshQuakes: "quake",
             bcpWeatherRefreshWarnings: "warning",
             bcpWeatherRefreshCyclones: "cyclone",
@@ -71,7 +61,7 @@ jobs:
           }
 
           function bcpStartupHasNewImportant(kind, before, after){
-            // 初回インストールなど、比較元が無い場合は「新規」と断定しない。
+            // 初回インストールなど比較元が無い場合は、新規と断定せず🚨を出さない。
             if (!before?.updatedAt) return false;
 
             if (kind === "quake"){
@@ -108,67 +98,42 @@ jobs:
           }
 
           function bcpWrapStartupRefresh(name){
-          '''
-          if marker not in text:
-              raise SystemExit("startup wrapper marker not found")
-          text = text.replace(marker, insert, 1)
+            const original = globalThis[name];
+            if (typeof original !== "function") return;
 
-          old = '''  globalThis[name] = async function(...args){
-            const suppress = bcpStartupPending.delete(name);
+            globalThis[name] = async function(...args){
+              const suppress = bcpStartupPending.delete(name);
 
-            // 自動更新OFF時は、起動・更新直後の自動取得そのものを行わない。
-            // 手動の「今すぐ更新」は startupPending を消費した後なので従来どおり実行できる。
-            if (suppress && !(await bcpAutoUpdateEnabled())){
-              return { ok: true, skipped: true, reason: "auto-update-off" };
-            }
-
-            if (suppress) bcpStartupSuppressDepth += 1;
-            try{
-              return await original.apply(this, args);
-            }finally{
-              if (suppress) bcpStartupSuppressDepth = Math.max(0, bcpStartupSuppressDepth - 1);
-            }
-          };
-          '''
-          new = '''  globalThis[name] = async function(...args){
-            const suppress = bcpStartupPending.delete(name);
-
-            // 自動更新OFF時は、起動・更新直後の自動取得そのものを行わない。
-            // 手動の「今すぐ更新」は startupPending を消費した後なので従来どおり実行できる。
-            if (suppress && !(await bcpAutoUpdateEnabled())){
-              return { ok: true, skipped: true, reason: "auto-update-off" };
-            }
-
-            const startupKind = suppress ? (BCP_STARTUP_KIND_BY_REFRESH[name] || "") : "";
-            const before = startupKind ? await bcpStartupReadCategory(startupKind) : null;
-
-            if (suppress) bcpStartupSuppressDepth += 1;
-            try{
-              const result = await original.apply(this, args);
-              if (suppress && startupKind && result?.skipped !== true){
-                const after = await bcpStartupReadCategory(startupKind);
-                if (bcpStartupHasNewImportant(startupKind, before, after)){
-                  await bcpStartupAttentionOnly();
-                }
+              // 自動更新OFF時は、起動・更新直後の自動取得そのものを行わない。
+              // 手動の「今すぐ更新」は startupPending を消費した後なので従来どおり実行できる。
+              if (suppress && !(await bcpAutoUpdateEnabled())){
+                return { ok: true, skipped: true, reason: "auto-update-off" };
               }
-              return result;
-            }finally{
-              if (suppress) bcpStartupSuppressDepth = Math.max(0, bcpStartupSuppressDepth - 1);
-            }
-          };
-          '''
-          if old not in text:
-              raise SystemExit("startup wrapped refresh body marker not found")
-          text = text.replace(old, new, 1)
 
+              const startupKind = suppress ? (BCP_STARTUP_KIND_BY_REFRESH[name] || "") : "";
+              const before = startupKind ? await bcpStartupReadCategory(startupKind) : null;
+
+              if (suppress) bcpStartupSuppressDepth += 1;
+              try{
+                const result = await original.apply(this, args);
+                if (suppress && startupKind && result?.skipped !== true){
+                  const after = await bcpStartupReadCategory(startupKind);
+                  if (bcpStartupHasNewImportant(startupKind, before, after)){
+                    await bcpStartupAttentionOnly();
+                  }
+                }
+                return result;
+              }finally{
+                if (suppress) bcpStartupSuppressDepth = Math.max(0, bcpStartupSuppressDepth - 1);
+              }
+            };
+          }
+
+          '''
+          text = text[:start] + replacement + text[end:]
           text = text.replace(
               '// ブラウザ起動時に取り込んだ「ブラウザ停止中の新着」はOS通知せず、🚨のみ点滅させる。',
               '// ブラウザ起動時の初回巡回はOS通知を抑止し、新規の重要事象だけ🚨を点滅させる。',
-              1,
-          )
-          text = text.replace(
-              '// 拡張機能の更新・再読み込み直後も同じ初回取り込み扱いにして通知ラッシュを防ぐ。',
-              '// 拡張機能の更新・再読み込み直後も同じ初回取り込み扱いにして通知ラッシュを防ぐ。',
               1,
           )
           path.write_text(text, encoding="utf-8")
