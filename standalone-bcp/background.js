@@ -832,23 +832,26 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 });
 async function setupAlarms(){
   const settings = await getSettings();
-  await Promise.allSettled([
-    chrome.alarms.clear("bcp2_quake"),
-    chrome.alarms.clear("bcp2_warning"),
-    chrome.alarms.clear("bcp2_cyclone")
-  ]);
+  const names = ["bcp2_quake", "bcp2_warning", "bcp2_cyclone"];
 
-  if (settings.autoUpdateEnabled === false) return;
+  if (settings.autoUpdateEnabled === false){
+    await Promise.allSettled(names.map((name) => chrome.alarms.clear(name)));
+    return;
+  }
 
-  chrome.alarms.create("bcp2_quake", {
-    periodInMinutes: Math.max(1, Number(settings.quakePeriodMinutes) || 5)
-  });
-  chrome.alarms.create("bcp2_warning", {
-    periodInMinutes: Math.max(1, Number(settings.warningPeriodMinutes) || 10)
-  });
-  chrome.alarms.create("bcp2_cyclone", {
-    periodInMinutes: Math.max(1, Number(settings.cyclonePeriodMinutes) || 10)
-  });
+  const desired = {
+    bcp2_quake: Math.max(1, Number(settings.quakePeriodMinutes) || 5),
+    bcp2_warning: Math.max(1, Number(settings.warningPeriodMinutes) || 10),
+    bcp2_cyclone: Math.max(1, Number(settings.cyclonePeriodMinutes) || 10)
+  };
+
+  for (const [name, periodInMinutes] of Object.entries(desired)){
+    const current = await chrome.alarms.get(name).catch(() => null);
+    const currentPeriod = Number(current?.periodInMinutes || 0);
+    if (current && Math.abs(currentPeriod - periodInMinutes) < 0.001) continue;
+    if (current) await chrome.alarms.clear(name);
+    chrome.alarms.create(name, { periodInMinutes });
+  }
 }
 
 async function initialize(){
