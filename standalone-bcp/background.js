@@ -952,3 +952,32 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 initialize().catch(() => {});
+
+/* ===== v1.0.10: 起動時のTab未読を通常時と同じ赤/黄ルールで確実に反映 =====
+ * startupRefresh前後の保存データを明示比較し、
+ * 新規・強化 = alert(赤) / 同レベル更新 = update(黄) をカテゴリ別に保持する。
+ * OS通知の起動時抑止は既存startupRefresh側のまま維持する。
+ */
+const bcpStandaloneStartupRefreshV110Original = startupRefresh;
+startupRefresh = async function(...args){
+  let before = {};
+  try{
+    before = await chrome.storage.local.get([STORE.quakes, STORE.warnings, STORE.cyclones]);
+  }catch(_){ }
+
+  const result = await bcpStandaloneStartupRefreshV110Original.apply(this, args);
+
+  try{
+    const after = await chrome.storage.local.get([STORE.quakes, STORE.warnings, STORE.cyclones]);
+    const detected = [
+      ["quake", bcpStandaloneQuakeSeverity(before[STORE.quakes], after[STORE.quakes])],
+      ["warning", bcpStandaloneWarningSeverity(before[STORE.warnings], after[STORE.warnings])],
+      ["cyclone", bcpStandaloneCycloneSeverity(before[STORE.cyclones], after[STORE.cyclones])],
+    ];
+    for (const [kind, severity] of detected){
+      if (severity) await addAttention(kind, severity);
+    }
+  }catch(_){ }
+
+  return result;
+};
