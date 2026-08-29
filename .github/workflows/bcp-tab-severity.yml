@@ -1,0 +1,829 @@
+name: Color-code BCP tab unread severity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/bcp-tab-severity.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch tab severity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace_between(text, start, end, replacement):
+              i = text.find(start)
+              if i < 0:
+                  raise SystemExit(f"start marker not found: {start[:80]}")
+              j = text.find(end, i + len(start))
+              if j < 0:
+                  raise SystemExit(f"end marker not found: {end[:80]}")
+              return text[:i] + replacement + text[j:]
+
+          Path("temmemo/bcp_tab_glow.js").write_text(r'''"use strict";
+
+          /*
+           * BCP category unread glow v1.3.138
+           * - update (same-level / normal information update): yellow
+           * - alert  (new event / escalation): red
+           * - alert always wins over update until that tab is opened.
+           */
+          (() => {
+            const STORE_KEY = "bcp_tab_unread_v1";
+            const TAB_IDS = {
+              quake: "bcpSubJma",
+              warning: "bcpSubWarning",
+              cyclone: "bcpSubCyclone",
+            };
+
+            function levelOf(value){
+              if (value === true) return 2;
+              if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+              if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+              return 0;
+            }
+
+            function normalize(value){
+              const raw = value && typeof value === "object" ? value : {};
+              return {
+                quake: levelOf(raw.quake),
+                warning: levelOf(raw.warning),
+                cyclone: levelOf(raw.cyclone),
+                lastAt: Number(raw.lastAt || 0),
+              };
+            }
+
+            function injectStyles(){
+              if (document.getElementById("bcpTabGlowStyles")) return;
+              const style = document.createElement("style");
+              style.id = "bcpTabGlowStyles";
+              style.textContent = `
+                .bcpSubTab.bcpHasUpdate {
+                  border-color: #facc15 !important;
+                  box-shadow:
+                    0 0 0 1px rgba(250,204,21,.75) inset,
+                    0 0 8px rgba(250,204,21,.75),
+                    0 0 16px rgba(245,158,11,.38);
+                  animation: bcpMainTabGlowYellow 1.35s ease-in-out infinite;
+                }
+                .bcpSubTab.bcpHasAlert {
+                  border-color: #ef4444 !important;
+                  box-shadow:
+                    0 0 0 1px rgba(239,68,68,.82) inset,
+                    0 0 9px rgba(239,68,68,.82),
+                    0 0 19px rgba(220,38,38,.48);
+                  animation: bcpMainTabGlowRed 1.05s ease-in-out infinite;
+                }
+                .bcpSubTab.on.bcpHasUpdate { border-color: #facc15 !important; }
+                .bcpSubTab.on.bcpHasAlert { border-color: #ef4444 !important; }
+
+                @keyframes bcpMainTabGlowYellow {
+                  0%, 100% {
+                    box-shadow:
+                      0 0 0 1px rgba(250,204,21,.55) inset,
+                      0 0 5px rgba(250,204,21,.45),
+                      0 0 10px rgba(245,158,11,.20);
+                  }
+                  50% {
+                    box-shadow:
+                      0 0 0 1px rgba(253,224,71,.95) inset,
+                      0 0 11px rgba(253,224,71,.95),
+                      0 0 22px rgba(245,158,11,.58);
+                  }
+                }
+                @keyframes bcpMainTabGlowRed {
+                  0%, 100% {
+                    box-shadow:
+                      0 0 0 1px rgba(239,68,68,.62) inset,
+                      0 0 6px rgba(239,68,68,.52),
+                      0 0 12px rgba(220,38,38,.24);
+                  }
+                  50% {
+                    box-shadow:
+                      0 0 0 1px rgba(248,113,113,.98) inset,
+                      0 0 13px rgba(248,113,113,.98),
+                      0 0 25px rgba(220,38,38,.66);
+                  }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                  .bcpSubTab.bcpHasUpdate {
+                    animation: none;
+                    box-shadow:
+                      0 0 0 1px rgba(250,204,21,.85) inset,
+                      0 0 10px rgba(250,204,21,.8);
+                  }
+                  .bcpSubTab.bcpHasAlert {
+                    animation: none;
+                    box-shadow:
+                      0 0 0 1px rgba(239,68,68,.9) inset,
+                      0 0 11px rgba(239,68,68,.9);
+                  }
+                }
+              `;
+              document.head.appendChild(style);
+            }
+
+            function render(value){
+              const unread = normalize(value);
+              for (const [kind, tabId] of Object.entries(TAB_IDS)){
+                const tab = document.getElementById(tabId);
+                if (!tab) continue;
+                tab.classList.toggle("bcpHasUpdate", unread[kind] === 1);
+                tab.classList.toggle("bcpHasAlert", unread[kind] >= 2);
+                tab.classList.remove("bcpHasNew");
+              }
+            }
+
+            async function load(){
+              const data = await chrome.storage.local.get([STORE_KEY]);
+              render(data[STORE_KEY]);
+            }
+
+            async function clearCategory(kind){
+              if (!TAB_IDS[kind]) return;
+              const data = await chrome.storage.local.get([STORE_KEY]);
+              const current = normalize(data[STORE_KEY]);
+              if (!current[kind]) return;
+
+              const next = {
+                quake: current.quake >= 2 ? "alert" : current.quake === 1 ? "update" : false,
+                warning: current.warning >= 2 ? "alert" : current.warning === 1 ? "update" : false,
+                cyclone: current.cyclone >= 2 ? "alert" : current.cyclone === 1 ? "update" : false,
+                lastAt: current.lastAt,
+                [kind]: false,
+              };
+              const anyUnread = levelOf(next.quake) || levelOf(next.warning) || levelOf(next.cyclone);
+              if (!anyUnread) next.lastAt = 0;
+              await chrome.storage.local.set({ [STORE_KEY]: next });
+            }
+
+            function wireTabs(){
+              for (const [kind, tabId] of Object.entries(TAB_IDS)){
+                const tab = document.getElementById(tabId);
+                if (!tab) continue;
+                tab.addEventListener("click", () => {
+                  clearCategory(kind).catch(() => {});
+                });
+              }
+            }
+
+            function wireStorage(){
+              chrome.storage.onChanged.addListener((changes, area) => {
+                if (area !== "local" || !changes[STORE_KEY]) return;
+                render(changes[STORE_KEY].newValue);
+              });
+            }
+
+            function init(){
+              injectStyles();
+              wireTabs();
+              wireStorage();
+              load().catch(() => {});
+            }
+
+            if (document.readyState === "loading"){
+              document.addEventListener("DOMContentLoaded", init, { once: true });
+            }else{
+              init();
+            }
+          })();
+          ''', encoding="utf-8")
+
+          path = Path("temmemo/service_worker_entry.js")
+          text = path.read_text(encoding="utf-8")
+          marker = "// ---- BCPサブタブ別の新着判定 v1.3.135 ----"
+          pos = text.find(marker)
+          if pos < 0:
+              raise SystemExit("temmemo BCP unread marker not found")
+          new_tail = r'''// ---- BCPサブタブ別の新着判定 v1.3.138 ----
+          function bcpTabSeverityLevel(value){
+            if (value === true) return 2;
+            if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+            if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+            return 0;
+          }
+
+          function bcpTabSeverityValue(level){
+            return Number(level) >= 2 ? "alert" : Number(level) === 1 ? "update" : false;
+          }
+
+          function bcpTabQuakeId(item){
+            return String(item?.id || item?.eventId || `${item?.eventTime || ""}|${item?.epicenter || ""}`);
+          }
+
+          function bcpTabQuakeSignature(item){
+            return JSON.stringify([
+              item?.eventTime || "",
+              item?.epicenter || "",
+              item?.magnitude || "",
+              item?.maxIntensity || "",
+              item?.reportTime || "",
+            ]);
+          }
+
+          function bcpTabQuakeSeverity(oldData, newData){
+            if (!oldData?.updatedAt) return 0;
+            const oldItems = Array.isArray(oldData?.items) ? oldData.items : [];
+            const newItems = Array.isArray(newData?.items) ? newData.items : [];
+            const oldMap = new Map(oldItems.map((item) => [bcpTabQuakeId(item), item]));
+            let severity = 0;
+            for (const item of newItems){
+              const score = Number(item?.intensityScore || 0);
+              if (score < 3) continue;
+              const oldItem = oldMap.get(bcpTabQuakeId(item));
+              if (!oldItem) return 2;
+              const oldScore = Number(oldItem?.intensityScore || 0);
+              if (score > oldScore) return 2;
+              if (score !== oldScore || bcpTabQuakeSignature(item) !== bcpTabQuakeSignature(oldItem)){
+                severity = Math.max(severity, 1);
+              }
+            }
+            return severity;
+          }
+
+          function bcpTabWarningKey(item, warning){
+            const area = String(item?.areaCode || item?.id || item?.areaName || "");
+            const phenomenon = String(warning?.phenomenon || warning?.code || warning?.name || "");
+            return `${area}:${phenomenon}`;
+          }
+
+          function bcpTabWarningMap(data){
+            const map = new Map();
+            for (const item of (Array.isArray(data?.items) ? data.items : [])){
+              for (const warning of (Array.isArray(item?.warnings) ? item.warnings : [])){
+                map.set(bcpTabWarningKey(item, warning), {
+                  level: Number(warning?.level || 0),
+                  code: String(warning?.code || ""),
+                  name: String(warning?.name || ""),
+                  status: String(warning?.status || ""),
+                  reportDatetime: String(item?.reportDatetime || ""),
+                });
+              }
+            }
+            return map;
+          }
+
+          function bcpTabWarningSeverity(oldData, newData){
+            if (!oldData?.updatedAt) return 0;
+            const oldMap = bcpTabWarningMap(oldData);
+            const newMap = bcpTabWarningMap(newData);
+            let severity = 0;
+            for (const [key, current] of newMap){
+              const previous = oldMap.get(key);
+              if (!previous) return 2;
+              if (current.level > previous.level) return 2;
+              if (
+                current.level !== previous.level ||
+                current.code !== previous.code ||
+                current.name !== previous.name ||
+                current.status !== previous.status ||
+                current.reportDatetime !== previous.reportDatetime
+              ){
+                severity = Math.max(severity, 1);
+              }
+            }
+            for (const key of oldMap.keys()){
+              if (!newMap.has(key)) severity = Math.max(severity, 1);
+            }
+            return severity;
+          }
+
+          function bcpTabCycloneId(item){
+            return String(item?.id || item?.number || item?.slotId || item?.displayName || "");
+          }
+
+          function bcpTabCycloneSignature(item){
+            return JSON.stringify([
+              item?.reportDateTime || "",
+              item?.targetDateTime || "",
+              Number(item?.intensityLevel || 0),
+              !!item?.ended,
+              item?.pressure || "",
+              item?.direction || "",
+              item?.speedKmH || "",
+              item?.maxWindMS || "",
+              item?.gustWindMS || "",
+              Array.isArray(item?.forecasts) ? item.forecasts : [],
+            ]);
+          }
+
+          function bcpTabCycloneSeverity(oldData, newData){
+            if (!oldData?.updatedAt) return 0;
+            const oldMap = new Map(
+              (Array.isArray(oldData?.items) ? oldData.items : []).map((item) => [bcpTabCycloneId(item), item])
+            );
+            let severity = 0;
+            for (const item of (Array.isArray(newData?.items) ? newData.items : [])){
+              const oldItem = oldMap.get(bcpTabCycloneId(item));
+              if (!oldItem) return 2;
+              const oldLevel = Number(oldItem?.intensityLevel || 0);
+              const newLevel = Number(item?.intensityLevel || 0);
+              if (newLevel > oldLevel) return 2;
+              if (bcpTabCycloneSignature(item) !== bcpTabCycloneSignature(oldItem)){
+                severity = Math.max(severity, 1);
+              }
+            }
+            return severity;
+          }
+
+          async function bcpMarkTabUnread(kind, severity){
+            if (!["quake", "warning", "cyclone"].includes(kind)) return;
+            const incoming = bcpTabSeverityLevel(severity);
+            if (!incoming) return;
+            const data = await chrome.storage.local.get([BCP_TAB_UNREAD_KEY]);
+            const raw = data[BCP_TAB_UNREAD_KEY] || {};
+            const current = bcpTabSeverityLevel(raw[kind]);
+            const nextLevel = Math.max(current, incoming);
+            await chrome.storage.local.set({
+              [BCP_TAB_UNREAD_KEY]: {
+                quake: bcpTabSeverityValue(kind === "quake" ? nextLevel : bcpTabSeverityLevel(raw.quake)),
+                warning: bcpTabSeverityValue(kind === "warning" ? nextLevel : bcpTabSeverityLevel(raw.warning)),
+                cyclone: bcpTabSeverityValue(kind === "cyclone" ? nextLevel : bcpTabSeverityLevel(raw.cyclone)),
+                lastAt: Date.now(),
+              },
+            });
+          }
+
+          chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== "local") return;
+            const detected = [];
+            const quakeChange = changes[BCP_TAB_DATA_KEYS.quake];
+            if (quakeChange){
+              const severity = bcpTabQuakeSeverity(quakeChange.oldValue, quakeChange.newValue);
+              if (severity) detected.push(["quake", severity]);
+            }
+            const warningChange = changes[BCP_TAB_DATA_KEYS.warning];
+            if (warningChange){
+              const severity = bcpTabWarningSeverity(warningChange.oldValue, warningChange.newValue);
+              if (severity) detected.push(["warning", severity]);
+            }
+            const cycloneChange = changes[BCP_TAB_DATA_KEYS.cyclone];
+            if (cycloneChange){
+              const severity = bcpTabCycloneSeverity(cycloneChange.oldValue, cycloneChange.newValue);
+              if (severity) detected.push(["cyclone", severity]);
+            }
+            if (!detected.length) return;
+            bcpTabUnreadQueue = bcpTabUnreadQueue
+              .then(async () => {
+                for (const [kind, severity] of detected) await bcpMarkTabUnread(kind, severity);
+              })
+              .catch(() => {});
+          });
+          '''
+          text = text[:pos] + new_tail
+          path.write_text(text, encoding="utf-8")
+
+          path = Path("standalone-bcp/background.js")
+          text = path.read_text(encoding="utf-8")
+
+          new_quake = r'''async function refreshQuakes(){
+            try{
+              const result = await collectQuakes();
+              const data = await chrome.storage.local.get([STORE.quakeLevels, STORE.quakeInitialized, STORE.quakes]);
+              const levels = { ...(data[STORE.quakeLevels] || {}) };
+              const initialized = !!data[STORE.quakeInitialized];
+              const oldData = data[STORE.quakes] || {};
+              const oldMap = new Map((Array.isArray(oldData?.items) ? oldData.items : []).map((item) => [String(item?.id || ""), item]));
+              const settings = await getSettings();
+              const now = Date.now();
+              let tabSeverity = 0;
+              const signature = (item) => JSON.stringify([
+                item?.eventTime || "", item?.epicenter || "", item?.magnitude || "", item?.maxIntensity || "", item?.reportTime || ""
+              ]);
+
+              for (const item of result.items){
+                const score = Number(item.intensityScore || 0);
+                const previous = Number(levels[item.id]?.score ?? levels[item.id] ?? 0);
+                const oldItem = oldMap.get(String(item.id || ""));
+                if (initialized && score >= NOTIFY_MIN_INTENSITY){
+                  if (!oldItem || score > Number(oldItem?.intensityScore || 0)){
+                    tabSeverity = 2;
+                  }else if (score !== Number(oldItem?.intensityScore || 0) || signature(item) !== signature(oldItem)){
+                    tabSeverity = Math.max(tabSeverity, 1);
+                  }
+                }
+                const isNewRelevantQuake = initialized && score >= NOTIFY_MIN_INTENSITY && previous < score;
+                if (isNewRelevantQuake && settings.quakeNotifications){
+                  await notify(`地震情報: ${item.maxIntensity}`, quakeMessage(item), item.link);
+                }
+                levels[item.id] = { score: Math.max(previous, score), at: now };
+              }
+
+              if (tabSeverity) await addAttention("quake", tabSeverity);
+
+              const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+              for (const id of Object.keys(levels)){
+                if (Number(levels[id]?.at || 0) < cutoff) delete levels[id];
+              }
+
+              await chrome.storage.local.set({
+                [STORE.quakes]: { items: result.items, updatedAt: now, sourceUrl: result.sourceUrl },
+                [STORE.quakeLevels]: levels,
+                [STORE.quakeInitialized]: true
+              });
+              await setError("quake", "");
+              return { ok: true, count: result.items.length };
+            }catch(error){
+              const message = `気象庁地震情報の取得失敗: ${String(error?.message || error)}`;
+              await setError("quake", message);
+              return { ok: false, error: message };
+            }
+          }
+          '''
+          text = replace_between(text, "async function refreshQuakes(){", "function warningIsActive", new_quake)
+
+          new_warning = r'''async function refreshWarnings(){
+            try{
+              const result = await collectWarnings();
+              const data = await chrome.storage.local.get([STORE.warningState, STORE.warningInitialized, STORE.warnings]);
+              const oldState = data[STORE.warningState] || {};
+              const initialized = !!data[STORE.warningInitialized];
+              const oldData = data[STORE.warnings] || {};
+              const settings = await getSettings();
+              const newState = {};
+              let tabSeverity = 0;
+
+              const warningMap = (dataset) => {
+                const map = new Map();
+                for (const item of (Array.isArray(dataset?.items) ? dataset.items : [])){
+                  for (const warning of (Array.isArray(item?.warnings) ? item.warnings : [])){
+                    const key = `${item.areaCode}:${warning.phenomenon}`;
+                    map.set(key, {
+                      level: Number(warning.level || 0),
+                      code: String(warning.code || ""),
+                      name: String(warning.name || ""),
+                      status: String(warning.status || ""),
+                      reportDatetime: String(item.reportDatetime || "")
+                    });
+                  }
+                }
+                return map;
+              };
+
+              const oldMap = warningMap(oldData);
+              const currentKeys = new Set();
+
+              for (const item of result.items){
+                for (const warning of item.warnings || []){
+                  const key = `${item.areaCode}:${warning.phenomenon}`;
+                  currentKeys.add(key);
+                  const previousLevel = Number(oldState[key] || 0);
+                  const previous = oldMap.get(key);
+                  const current = {
+                    level: Number(warning.level || 0),
+                    code: String(warning.code || ""),
+                    name: String(warning.name || ""),
+                    status: String(warning.status || ""),
+                    reportDatetime: String(item.reportDatetime || "")
+                  };
+                  newState[key] = warning.level;
+
+                  if (initialized){
+                    if (!previous || current.level > previous.level){
+                      tabSeverity = 2;
+                    }else if (
+                      current.level !== previous.level ||
+                      current.code !== previous.code ||
+                      current.name !== previous.name ||
+                      current.status !== previous.status ||
+                      current.reportDatetime !== previous.reportDatetime
+                    ){
+                      tabSeverity = Math.max(tabSeverity, 1);
+                    }
+                  }
+
+                  const isNewOrEscalated = initialized && previousLevel < warning.level;
+                  if (isNewOrEscalated && settings.warningNotifications && warning.level >= 3){
+                    const location = [item.parentAreaName, item.areaName]
+                      .filter((name, index, values) => name && values.indexOf(name) === index)
+                      .join("・");
+                    await notify(`気象警報: ${location || item.areaCode}`, warning.name, item.detailUrl || JMA_WARNING_PAGE_URL);
+                  }
+                }
+              }
+
+              if (initialized){
+                for (const key of oldMap.keys()){
+                  if (!currentKeys.has(key)) tabSeverity = Math.max(tabSeverity, 1);
+                }
+              }
+              if (tabSeverity) await addAttention("warning", tabSeverity);
+
+              await chrome.storage.local.set({
+                [STORE.warnings]: {
+                  items: result.items,
+                  updatedAt: Date.now(),
+                  sourceUrl: result.sourceUrl,
+                  reportCount: result.reportCount
+                },
+                [STORE.warningState]: newState,
+                [STORE.warningInitialized]: true
+              });
+              await setError("warning", "");
+              return { ok: true, count: result.items.length };
+            }catch(error){
+              const message = `気象庁警報情報の取得失敗: ${String(error?.message || error)}`;
+              await setError("warning", message);
+              return { ok: false, error: message };
+            }
+          }
+          '''
+          text = replace_between(text, "async function refreshWarnings(){", "function cycloneDateMs", new_warning)
+
+          old = '''    const newState = { ...oldState };
+
+              for (const item of result.items){'''
+          new = '''    const newState = { ...oldState };
+              let tabSeverity = 0;
+
+              for (const item of result.items){'''
+          if old not in text:
+              raise SystemExit("cyclone severity init marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''      const stateChanged = initialized && (
+                !previous ||
+                reportStamp !== previousStamp ||
+                currentLevel !== previousLevel ||
+                !!item.ended !== !!previous?.ended
+              );
+
+              if (stateChanged){
+                await addAttention("cyclone");
+              }
+          '''
+          new = '''      if (initialized){
+                if (!previous || currentLevel > previousLevel){
+                  tabSeverity = 2;
+                }else if (
+                  reportStamp !== previousStamp ||
+                  currentLevel !== previousLevel ||
+                  !!item.ended !== !!previous?.ended
+                ){
+                  tabSeverity = Math.max(tabSeverity, 1);
+                }
+              }
+          '''
+          if old not in text:
+              raise SystemExit("cyclone state marker not found")
+          text = text.replace(old, new, 1)
+
+          idx = text.find("async function refreshCyclones(){")
+          old = '''    const cutoff = now - 7 * 24 * 60 * 60 * 1000;'''
+          j = text.find(old, idx)
+          if j < 0:
+              raise SystemExit("cyclone cutoff marker not found")
+          new = '''    if (tabSeverity) await addAttention("cyclone", tabSeverity);
+
+              const cutoff = now - 7 * 24 * 60 * 60 * 1000;'''
+          text = text[:j] + new + text[j + len(old):]
+
+          new_attention = r'''function bcpAttentionLevel(value){
+            if (value === true) return 2;
+            if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+            if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+            return 0;
+          }
+
+          function bcpAttentionValue(level){
+            return Number(level) >= 2 ? "alert" : Number(level) === 1 ? "update" : false;
+          }
+
+          function bcpNormalizeAttentionV109(attention){
+            const raw = attention && typeof attention === "object" ? attention : {};
+            const quakeLevel = bcpAttentionLevel(raw.quake);
+            const warningLevel = bcpAttentionLevel(raw.warning);
+            const cycloneLevel = bcpAttentionLevel(raw.cyclone);
+            const count = [quakeLevel, warningLevel, cycloneLevel].filter((level) => level > 0).length;
+            return {
+              count,
+              lastAt: count ? Number(raw.lastAt || 0) : 0,
+              quake: bcpAttentionValue(quakeLevel),
+              warning: bcpAttentionValue(warningLevel),
+              cyclone: bcpAttentionValue(cycloneLevel)
+            };
+          }
+
+          addAttention = async function(kind, severity="alert"){
+            if (!["quake", "warning", "cyclone"].includes(kind)) return;
+            const incoming = bcpAttentionLevel(severity);
+            if (!incoming) return;
+            const data = await chrome.storage.local.get([STORE.attention]);
+            const current = bcpNormalizeAttentionV109(data[STORE.attention]);
+            const nextLevel = Math.max(bcpAttentionLevel(current[kind]), incoming);
+            const next = bcpNormalizeAttentionV109({
+              ...current,
+              [kind]: bcpAttentionValue(nextLevel),
+              lastAt: Date.now()
+            });
+            next.lastAt = Date.now();
+            await chrome.storage.local.set({ [STORE.attention]: next });
+            await syncActionBadge(next);
+          };
+
+          clearAttention = async function(kind){
+            let category = ["quake", "warning", "cyclone"].includes(kind) ? kind : "";
+            if (!category){
+              const data = await chrome.storage.local.get([STORE.view]);
+              category = data[STORE.view] === "warning" ? "warning" : data[STORE.view] === "cyclone" ? "cyclone" : "quake";
+            }
+            const data = await chrome.storage.local.get([STORE.attention]);
+            const current = bcpNormalizeAttentionV109(data[STORE.attention]);
+            const next = bcpNormalizeAttentionV109({ ...current, [category]: false });
+            if (next.count > 0) next.lastAt = current.lastAt || Date.now();
+            await chrome.storage.local.set({ [STORE.attention]: next });
+            await syncActionBadge(next);
+          };
+          '''
+          text = replace_between(text, "function bcpNormalizeAttentionV104(attention){", "async function setupAlarms(){", new_attention)
+          path.write_text(text, encoding="utf-8")
+
+          path = Path("standalone-bcp/panel.js")
+          text = path.read_text(encoding="utf-8")
+          tail_marker = '"use strict";\n(() => {\n  const ATTENTION_KEY = "bcp_attention_v1";'
+          pos = text.find(tail_marker)
+          if pos < 0:
+              raise SystemExit("standalone panel attention marker not found")
+          panel_tail = r'''"use strict";
+          (() => {
+            const ATTENTION_KEY = "bcp_attention_v1";
+            const CATEGORY_TABS = {
+              quake: "tabQuake",
+              warning: "tabWarning",
+              cyclone: "tabCyclone"
+            };
+
+            function levelOf(value){
+              if (value === true) return 2;
+              if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+              if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+              return 0;
+            }
+
+            function normalize(attention){
+              const raw = attention && typeof attention === "object" ? attention : {};
+              return {
+                quake: levelOf(raw.quake),
+                warning: levelOf(raw.warning),
+                cyclone: levelOf(raw.cyclone)
+              };
+            }
+
+            function render(attention){
+              const levels = normalize(attention);
+              for (const [kind, tabId] of Object.entries(CATEGORY_TABS)){
+                const tab = document.getElementById(tabId);
+                if (!tab) continue;
+                tab.classList.toggle("hasNewUpdate", levels[kind] === 1);
+                tab.classList.toggle("hasNewAlert", levels[kind] >= 2);
+                tab.classList.remove("hasNew");
+              }
+            }
+
+            async function load(){
+              const data = await chrome.storage.local.get([ATTENTION_KEY]);
+              render(data[ATTENTION_KEY]);
+            }
+
+            async function clearCategory(kind){
+              if (!CATEGORY_TABS[kind]) return;
+              const data = await chrome.storage.local.get([ATTENTION_KEY]);
+              const raw = data[ATTENTION_KEY] && typeof data[ATTENTION_KEY] === "object" ? data[ATTENTION_KEY] : {};
+              const levels = normalize(raw);
+              levels[kind] = 0;
+              const count = Object.values(levels).filter((level) => level > 0).length;
+              await chrome.storage.local.set({
+                [ATTENTION_KEY]: {
+                  ...raw,
+                  quake: levels.quake >= 2 ? "alert" : levels.quake === 1 ? "update" : false,
+                  warning: levels.warning >= 2 ? "alert" : levels.warning === 1 ? "update" : false,
+                  cyclone: levels.cyclone >= 2 ? "alert" : levels.cyclone === 1 ? "update" : false,
+                  count,
+                  lastAt: count ? Number(raw.lastAt || Date.now()) : 0
+                }
+              });
+            }
+
+            function wireTab(kind, tabId){
+              const tab = document.getElementById(tabId);
+              if (!tab) return;
+              tab.addEventListener("click", () => clearCategory(kind).catch(() => {}));
+            }
+
+            document.addEventListener("DOMContentLoaded", () => {
+              load().catch(() => {});
+              for (const [kind, tabId] of Object.entries(CATEGORY_TABS)) wireTab(kind, tabId);
+            });
+
+            chrome.storage.onChanged.addListener((changes, area) => {
+              if (area !== "local" || !changes[ATTENTION_KEY]) return;
+              render(changes[ATTENTION_KEY].newValue);
+            });
+          })();
+          '''
+          text = text[:pos] + panel_tail
+          path.write_text(text, encoding="utf-8")
+
+          path = Path("standalone-bcp/panel.css")
+          css = path.read_text(encoding="utf-8")
+          css += r'''
+
+          /* v1.0.9: BCP Tab unread severity */
+          .tab.hasNewUpdate{
+            border-color:#facc15;
+            box-shadow:0 0 0 1px rgba(250,204,21,.75) inset,0 0 8px rgba(250,204,21,.75),0 0 16px rgba(245,158,11,.38);
+            animation:bcpTabGlow 1.35s ease-in-out infinite;
+          }
+          .tab.on.hasNewUpdate{background:#26364d;border-color:#facc15}
+          .tab.hasNewAlert{
+            border-color:#ef4444;
+            box-shadow:0 0 0 1px rgba(239,68,68,.82) inset,0 0 9px rgba(239,68,68,.82),0 0 19px rgba(220,38,38,.48);
+            animation:bcpTabGlowRed 1.05s ease-in-out infinite;
+          }
+          .tab.on.hasNewAlert{background:#26364d;border-color:#ef4444}
+          @keyframes bcpTabGlowRed{
+            0%,100%{box-shadow:0 0 0 1px rgba(239,68,68,.62) inset,0 0 6px rgba(239,68,68,.52),0 0 12px rgba(220,38,38,.24)}
+            50%{box-shadow:0 0 0 1px rgba(248,113,113,.98) inset,0 0 13px rgba(248,113,113,.98),0 0 25px rgba(220,38,38,.66)}
+          }
+          @media (prefers-reduced-motion: reduce){
+            .tab.hasNewUpdate{animation:none;box-shadow:0 0 0 1px rgba(250,204,21,.85) inset,0 0 10px rgba(250,204,21,.8)}
+            .tab.hasNewAlert{animation:none;box-shadow:0 0 0 1px rgba(239,68,68,.9) inset,0 0 11px rgba(239,68,68,.9)}
+          }
+          '''
+          path.write_text(css, encoding="utf-8")
+
+          manifest_path = Path("temmemo/manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest["version"] = "1.3.138"
+          manifest["description"] = (
+              "BCPサブタブの未読表示を2段階化。新規事象・警戒レベル/勢力上昇は赤、"
+              "同レベルの情報更新は黄色で発光し、黄色未読中に赤対象が来た場合は赤へ昇格。 / "
+              + manifest.get("description", "")
+          )
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          manifest_path = Path("standalone-bcp/manifest.json")
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest["version"] = "1.0.9"
+          manifest["description"] = (
+              "BCP分離版。v1.0.9でTab未読表示を2段階化し、"
+              "新規事象・警戒レベル/勢力上昇は赤、同レベルの情報更新は黄色で発光。"
+              "黄色未読中に赤対象が来た場合は赤へ昇格。"
+          )
+          manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+          node --check temmemo/service_worker_entry.js
+          node --check temmemo/bcp_tab_glow.js
+          node --check standalone-bcp/background.js
+          node --check standalone-bcp/panel.js
+          python -m json.tool temmemo/manifest.json >/dev/null
+          python -m json.tool standalone-bcp/manifest.json >/dev/null
+          grep -q 'bcpHasAlert' temmemo/bcp_tab_glow.js
+          grep -q 'bcpTabWarningSeverity' temmemo/service_worker_entry.js
+          grep -q 'hasNewAlert' standalone-bcp/panel.js
+          grep -q 'addAttention("warning", tabSeverity)' standalone-bcp/background.js
+
+      - name: Build ZIPs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd temmemo && zip -qr ../temmemo_v1.3.138.zip .)
+          (cd standalone-bcp && zip -qr ../temmemo_bcp_standalone_v1.0.9.zip .)
+          unzip -t temmemo_v1.3.138.zip >/dev/null
+          unzip -t temmemo_bcp_standalone_v1.0.9.zip >/dev/null
+
+      - name: Upload ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcp-tab-severity-zips
+          path: |
+            temmemo_v1.3.138.zip
+            temmemo_bcp_standalone_v1.0.9.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Commit patch and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/bcp-tab-severity.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Color-code BCP tab unread severity"
+          git push
