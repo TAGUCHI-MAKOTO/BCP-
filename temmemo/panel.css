@@ -2177,3 +2177,35 @@ html.layoutAbcd body.listTabBcp #bcpViewCyclone .bcpList{
   overflow:auto !important;
   padding-right:2px !important;
 }
+
+
+/* v1.3.142: softer BCP patrol lamp */
+@keyframes bcpPatrolLampSoftV142{
+  0%,100%{
+    background:rgba(239,68,68,.05);
+    box-shadow:0 0 0 1px rgba(239,68,68,.34),0 0 4px rgba(239,68,68,.16);
+    opacity:.84;
+    filter:brightness(.98);
+  }
+  50%{
+    background:rgba(239,68,68,.15);
+    box-shadow:0 0 0 1px rgba(239,68,68,.62),0 0 8px rgba(239,68,68,.34);
+    opacity:1;
+    filter:brightness(1.08);
+  }
+}
+#btnBcp.reqEmpty,
+#btnBcp.bcpStartupAttention{
+  border-color:rgba(239,68,68,.78) !important;
+  animation:bcpPatrolLampSoftV142 1.35s ease-in-out infinite !important;
+}
+@media (prefers-reduced-motion:reduce){
+  #btnBcp.reqEmpty,
+  #btnBcp.bcpStartupAttention{
+    animation:none !important;
+    background:rgba(239,68,68,.10) !important;
+    box-shadow:0 0 0 1px rgba(239,68,68,.50) !important;
+    opacity:1 !important;
+    filter:none !important;
+  }
+}

@@ -155,3 +155,33 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
 @media (prefers-reduced-motion:reduce){
   .patrolLamp.isAlert{animation:none;background:rgba(127,29,29,.45);box-shadow:0 0 0 2px rgba(239,68,68,.55);filter:brightness(1.2)}
 }
+
+
+/* v1.0.14: softer patrol lamp */
+@keyframes oshirasePatrolSoftV1014{
+  0%,100%{
+    background:rgba(127,29,29,.08);
+    box-shadow:0 0 0 1px rgba(239,68,68,.34),0 0 4px rgba(239,68,68,.16);
+    opacity:.84;
+    filter:brightness(.98);
+  }
+  50%{
+    background:rgba(127,29,29,.20);
+    box-shadow:0 0 0 1px rgba(239,68,68,.62),0 0 8px rgba(239,68,68,.34);
+    opacity:1;
+    filter:brightness(1.08);
+  }
+}
+.patrolLamp.isAlert{
+  border-color:rgba(239,68,68,.78);
+  animation:oshirasePatrolSoftV1014 1.35s ease-in-out infinite;
+}
+@media (prefers-reduced-motion:reduce){
+  .patrolLamp.isAlert{
+    animation:none !important;
+    background:rgba(127,29,29,.14) !important;
+    box-shadow:0 0 0 1px rgba(239,68,68,.50) !important;
+    opacity:1 !important;
+    filter:none !important;
+  }
+}
