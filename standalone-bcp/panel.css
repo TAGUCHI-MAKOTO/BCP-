@@ -85,7 +85,7 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
 .card.weather.level3{background:#541b20}
 .card.weather.level4{background:#35185f}
 .card.weather.level5{background:#070707}
-.card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#541b20}
+.card.cyclone:not(.ended){background:#541b20}
 .card.cyclone.ended{background:var(--ended);opacity:.85}
 .badge{display:inline-block;font-size:11px;font-weight:800;padding:3px 7px;border-radius:999px;background:#0005;margin-bottom:6px}
 .title{font-size:15px;font-weight:800;line-height:1.4}
@@ -118,7 +118,7 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
   .card.weather.level3{background:#fee2e2}
   .card.weather.level4{background:#ede9fe}
   .card.weather.level5{background:#1f2937;color:#fff}
-  .card.cyclone:not(.ended).intensity3,.card.cyclone:not(.ended).intensity4,.card.cyclone:not(.ended).intensity5{background:#fee2e2}
+  .card.cyclone:not(.ended){background:#fee2e2}
   .warningName{background:#e5e7eb}
   .warningName.level2{background:#fde68a;color:#713f12}
   .warningName.level3{background:#fecaca}

@@ -179,7 +179,7 @@ async function syncActionBadge(_attention){
   // 未確認の重要事象はサイドパネル内の🚨で知らせる。
   try{
     await chrome.action.setBadgeText({ text: "" });
-    await chrome.action.setTitle({ title: "BCPアラート" });
+    await chrome.action.setTitle({ title: "警報お知らせくん" });
   }catch(_){ }
 }
 
@@ -215,7 +215,7 @@ async function notify(title, message, url){
     await chrome.notifications.create(id, {
       type: "basic",
       iconUrl: "icon48.png",
-      title: String(title || "BCPアラート"),
+      title: String(title || "警報お知らせくん"),
       message: String(message || ""),
       priority: 2
     });
