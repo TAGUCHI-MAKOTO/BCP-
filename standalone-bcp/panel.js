@@ -439,8 +439,9 @@ function wire(){
 document.addEventListener("DOMContentLoaded", async () => {
   wire();
   await loadAndRender({ hydrate: true });
-  await send("ackAttention");
-  $("bcpAttention").hidden = true;
+  // v1.0.10: 起動時に全カテゴリを一括既読にしない。
+  // 未読は各Tabを実際に確認した時だけカテゴリ単位で解除する。
+  if ($("bcpAttention")) $("bcpAttention").hidden = true;
 });
 "use strict";
 (()=>{
