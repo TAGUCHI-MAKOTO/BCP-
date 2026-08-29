@@ -1,0 +1,76 @@
+name: Harden BCP severity write queue
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/fix-severity-queue.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Serialize standalone unread severity writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('standalone-bcp/background.js')
+          s=p.read_text(encoding='utf-8')
+          start='addAttention=async function(kind,severity){'
+          end='\n\nclearAttention=async function(kind){'
+          i=s.find(start)
+          j=s.find(end,i)
+          if i<0 or j<0:
+              raise SystemExit('severity addAttention block not found')
+          repl=r'''let bcpAttentionSeverityQueueV109=Promise.resolve();
+addAttention=function(kind,severity){
+  if (!["quake","warning","cyclone"].includes(kind)) return Promise.resolve();
+  const incoming=bcpAttentionLevel(severity);
+  if (!incoming) return Promise.resolve();
+  bcpAttentionSeverityQueueV109=bcpAttentionSeverityQueueV109.then(async()=>{
+    const data=await chrome.storage.local.get([STORE.attention]);
+    const current=bcpNormalizeAttentionV109(data[STORE.attention]);
+    const merged=Math.max(bcpAttentionLevel(current[kind]),incoming);
+    const next=bcpNormalizeAttentionV109({...current,[kind]:bcpAttentionValue(merged),lastAt:Date.now()});
+    next.lastAt=Date.now();
+    await chrome.storage.local.set({[STORE.attention]:next});
+    await syncActionBadge(next);
+  });
+  return bcpAttentionSeverityQueueV109;
+};'''
+          p.write_text(s[:i]+repl+s[j:],encoding='utf-8')
+          PY
+          node --check standalone-bcp/background.js
+          grep -Fq 'bcpAttentionSeverityQueueV109=bcpAttentionSeverityQueueV109.then' standalone-bcp/background.js
+      - name: Build ZIPs
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd temmemo && zip -qr ../temmemo_v1.3.138.zip .)
+          (cd standalone-bcp && zip -qr ../temmemo_bcp_standalone_v1.0.9.zip .)
+          unzip -t temmemo_v1.3.138.zip >/dev/null
+          unzip -t temmemo_bcp_standalone_v1.0.9.zip >/dev/null
+      - name: Upload ZIPs
+        uses: actions/upload-artifact@v4
+        with:
+          name: bcp-tab-severity-zips-final
+          path: |
+            temmemo_v1.3.138.zip
+            temmemo_bcp_standalone_v1.0.9.zip
+          retention-days: 7
+      - name: Commit and remove workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/fix-severity-queue.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Serialize BCP severity updates"
+          git push
