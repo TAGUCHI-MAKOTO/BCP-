@@ -17,6 +17,7 @@ const BCP_AUTO_ALARM_NAMES = [
 ];
 
 const BCP_TAB_UNREAD_KEY = "bcp_tab_unread_v1";
+const BCP_STARTUP_ATTENTION_KEY = "bcp_startup_attention_v1";
 const BCP_TAB_DATA_KEYS = {
   quake: "bcp2_quakes",
   warning: "bcp2_warnings",
@@ -54,16 +55,27 @@ if (typeof bcpWeatherSetupAlarms === "function"){
   };
 }
 
-async function bcpStartupAttentionOnly(){
+async function bcpStartupAttentionOnly(kind){
   try{
-    const key = "bcp_attention_v1";
-    const data = await chrome.storage.local.get([key]);
-    const attention = data[key] || { count: 0, lastAt: 0 };
+    const attentionKey = "bcp_attention_v1";
+    const data = await chrome.storage.local.get([attentionKey, BCP_STARTUP_ATTENTION_KEY]);
+    const attention = data[attentionKey] || { count: 0, lastAt: 0 };
+    const current = data[BCP_STARTUP_ATTENTION_KEY] || {};
+    const nextStartup = {
+      quake: current.quake === true,
+      warning: current.warning === true,
+      cyclone: current.cyclone === true,
+      active: false,
+      lastAt: Date.now(),
+    };
+    if (["quake", "warning", "cyclone"].includes(kind)) nextStartup[kind] = true;
+    nextStartup.active = nextStartup.quake || nextStartup.warning || nextStartup.cyclone;
     await chrome.storage.local.set({
-      [key]: {
+      [attentionKey]: {
         count: Math.max(1, (Number(attention.count) || 0) + 1),
         lastAt: Date.now(),
       },
+      [BCP_STARTUP_ATTENTION_KEY]: nextStartup,
     });
   }catch(_){ }
 }
@@ -154,7 +166,7 @@ function bcpWrapStartupRefresh(name){
       if (suppress && startupKind && result?.skipped !== true){
         const after = await bcpStartupReadCategory(startupKind);
         if (bcpStartupHasNewImportant(startupKind, before, after)){
-          await bcpStartupAttentionOnly();
+          await bcpStartupAttentionOnly(startupKind);
         }
       }
       return result;
@@ -170,6 +182,15 @@ for (const name of BCP_STARTUP_REFRESH_NAMES){
 
 function bcpArmStartupNotificationSuppression(){
   bcpStartupPending = new Set(BCP_STARTUP_REFRESH_NAMES);
+  chrome.storage.local.set({
+    [BCP_STARTUP_ATTENTION_KEY]: {
+      quake: false,
+      warning: false,
+      cyclone: false,
+      active: false,
+      lastAt: 0,
+    },
+  }).catch(() => {});
 }
 
 // ブラウザ起動時の初回巡回はOS通知を抑止し、新規の重要事象だけ🚨を点滅させる。
