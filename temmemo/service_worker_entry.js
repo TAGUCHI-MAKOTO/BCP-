@@ -71,11 +71,66 @@ async function bcpStartupAttentionOnly(){
 const bcpNotifyOriginal = bcpNotify;
 bcpNotify = async function(title, message, url){
   if (bcpStartupSuppressDepth > 0){
-    await bcpStartupAttentionOnly();
+    // 起動直後の初回巡回ではOS通知を出さない。
+    // 🚨は「起動時の新規重要事象」判定だけで点滅させる。
     return;
   }
   return bcpNotifyOriginal(title, message, url);
 };
+
+const BCP_STARTUP_KIND_BY_REFRESH = {
+  bcpWeatherRefreshQuakes: "quake",
+  bcpWeatherRefreshWarnings: "warning",
+  bcpWeatherRefreshCyclones: "cyclone",
+};
+
+async function bcpStartupReadCategory(kind){
+  const key = BCP_TAB_DATA_KEYS[kind];
+  if (!key) return null;
+  try{
+    const data = await chrome.storage.local.get([key]);
+    return data[key] || null;
+  }catch(_){
+    return null;
+  }
+}
+
+function bcpStartupHasNewImportant(kind, before, after){
+  // 初回インストールなど比較元が無い場合は、新規と断定せず🚨を出さない。
+  if (!before?.updatedAt) return false;
+
+  if (kind === "quake"){
+    const oldIds = new Set(
+      (Array.isArray(before?.items) ? before.items : []).map((item) => bcpTabQuakeId(item))
+    );
+    return (Array.isArray(after?.items) ? after.items : []).some((item) =>
+      Number(item?.intensityScore || 0) >= 3 && !oldIds.has(bcpTabQuakeId(item))
+    );
+  }
+
+  if (kind === "warning"){
+    const oldMap = bcpTabWarningMap(before);
+    const newMap = bcpTabWarningMap(after);
+    for (const [key, current] of newMap){
+      if (Number(current?.level || 0) < 3) continue;
+      const previous = oldMap.get(key);
+      // 新しい警報現象、または注意報から警報以上へ移行したもの。
+      if (!previous || Number(previous?.level || 0) < 3) return true;
+    }
+    return false;
+  }
+
+  if (kind === "cyclone"){
+    const oldIds = new Set(
+      (Array.isArray(before?.items) ? before.items : []).map((item) => bcpTabCycloneId(item))
+    );
+    return (Array.isArray(after?.items) ? after.items : []).some((item) =>
+      !item?.ended && !oldIds.has(bcpTabCycloneId(item))
+    );
+  }
+
+  return false;
+}
 
 function bcpWrapStartupRefresh(name){
   const original = globalThis[name];
@@ -90,9 +145,19 @@ function bcpWrapStartupRefresh(name){
       return { ok: true, skipped: true, reason: "auto-update-off" };
     }
 
+    const startupKind = suppress ? (BCP_STARTUP_KIND_BY_REFRESH[name] || "") : "";
+    const before = startupKind ? await bcpStartupReadCategory(startupKind) : null;
+
     if (suppress) bcpStartupSuppressDepth += 1;
     try{
-      return await original.apply(this, args);
+      const result = await original.apply(this, args);
+      if (suppress && startupKind && result?.skipped !== true){
+        const after = await bcpStartupReadCategory(startupKind);
+        if (bcpStartupHasNewImportant(startupKind, before, after)){
+          await bcpStartupAttentionOnly();
+        }
+      }
+      return result;
     }finally{
       if (suppress) bcpStartupSuppressDepth = Math.max(0, bcpStartupSuppressDepth - 1);
     }
@@ -107,7 +172,7 @@ function bcpArmStartupNotificationSuppression(){
   bcpStartupPending = new Set(BCP_STARTUP_REFRESH_NAMES);
 }
 
-// ブラウザ起動時に取り込んだ「ブラウザ停止中の新着」はOS通知せず、🚨のみ点滅させる。
+// ブラウザ起動時の初回巡回はOS通知を抑止し、新規の重要事象だけ🚨を点滅させる。
 chrome.runtime.onStartup?.addListener(() => {
   bcpArmStartupNotificationSuppression();
 });
