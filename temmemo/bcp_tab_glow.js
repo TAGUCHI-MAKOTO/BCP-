@@ -1,12 +1,13 @@
 "use strict";
 
-/* BCP category unread glow v1.3.140
+/* BCP category unread glow v1.3.141
  * update = yellow / alert = red / alert wins until viewed.
- * Startup-important patrol lamp stays active until the matching category tab is acknowledged.
+ * Startup-important alerts and red weather-tab alerts keep the patrol lamp active until the matching category tab is acknowledged.
  */
 (() => {
   const STORE_KEY = "bcp_tab_unread_v1";
   const STARTUP_ATTENTION_KEY = "bcp_startup_attention_v1";
+  const TAB_ALERT_ATTENTION_KEY = "bcp_tab_alert_attention_v1";
   const TAB_IDS = {
     quake: "bcpSubJma",
     warning: "bcpSubWarning",
@@ -104,52 +105,69 @@
     }
   }
 
-  function renderStartupAttention(value){
-    const startup = normalizeStartup(value);
+  async function renderPatrolAttention(){
+  try{
+    const data = await chrome.storage.local.get([STARTUP_ATTENTION_KEY, TAB_ALERT_ATTENTION_KEY]);
+    const startup = normalizeStartup(data[STARTUP_ATTENTION_KEY]);
+    const tabAlert = normalizeStartup(data[TAB_ALERT_ATTENTION_KEY]);
     const button = document.getElementById("btnBcp");
     if (!button) return;
-    button.classList.toggle("bcpStartupAttention", startup.active);
-  }
+    button.classList.toggle("bcpStartupAttention", startup.active || tabAlert.active);
+  }catch(_){ }
+}
 
-  async function load(){
-    const data = await chrome.storage.local.get([STORE_KEY, STARTUP_ATTENTION_KEY]);
-    render(data[STORE_KEY]);
-    renderStartupAttention(data[STARTUP_ATTENTION_KEY]);
-  }
+async function load(){
+  const data = await chrome.storage.local.get([STORE_KEY]);
+  render(data[STORE_KEY]);
+  await renderPatrolAttention();
+}
 
   async function clearCategory(kind){
-    if (!TAB_IDS[kind]) return;
-    const data = await chrome.storage.local.get([STORE_KEY, STARTUP_ATTENTION_KEY]);
-    const current = normalize(data[STORE_KEY]);
-    const startup = normalizeStartup(data[STARTUP_ATTENTION_KEY]);
-    const changes = {};
+  if (!TAB_IDS[kind]) return;
+  const data = await chrome.storage.local.get([STORE_KEY, STARTUP_ATTENTION_KEY, TAB_ALERT_ATTENTION_KEY]);
+  const current = normalize(data[STORE_KEY]);
+  const startup = normalizeStartup(data[STARTUP_ATTENTION_KEY]);
+  const tabAlert = normalizeStartup(data[TAB_ALERT_ATTENTION_KEY]);
+  const changes = {};
 
-    if (current[kind]){
-      current[kind] = 0;
-      changes[STORE_KEY] = {
-        quake: valueOf(current.quake),
-        warning: valueOf(current.warning),
-        cyclone: valueOf(current.cyclone),
-        lastAt: (current.quake || current.warning || current.cyclone) ? current.lastAt : 0,
-      };
-    }
-
-    if (startup[kind]){
-      startup[kind] = false;
-      startup.active = startup.quake || startup.warning || startup.cyclone;
-      changes[STARTUP_ATTENTION_KEY] = {
-        quake: startup.quake,
-        warning: startup.warning,
-        cyclone: startup.cyclone,
-        active: startup.active,
-        lastAt: startup.active ? startup.lastAt : 0,
-      };
-    }
-
-    if (Object.keys(changes).length) await chrome.storage.local.set(changes);
+  if (current[kind]){
+    current[kind] = 0;
+    changes[STORE_KEY] = {
+      quake: valueOf(current.quake),
+      warning: valueOf(current.warning),
+      cyclone: valueOf(current.cyclone),
+      lastAt: (current.quake || current.warning || current.cyclone) ? current.lastAt : 0,
+    };
   }
 
-  function init(){
+  if (startup[kind]){
+    startup[kind] = false;
+    startup.active = startup.quake || startup.warning || startup.cyclone;
+    changes[STARTUP_ATTENTION_KEY] = {
+      quake: startup.quake,
+      warning: startup.warning,
+      cyclone: startup.cyclone,
+      active: startup.active,
+      lastAt: startup.active ? startup.lastAt : 0,
+    };
+  }
+
+  if (tabAlert[kind]){
+    tabAlert[kind] = false;
+    tabAlert.active = tabAlert.quake || tabAlert.warning || tabAlert.cyclone;
+    changes[TAB_ALERT_ATTENTION_KEY] = {
+      quake: tabAlert.quake,
+      warning: tabAlert.warning,
+      cyclone: tabAlert.cyclone,
+      active: tabAlert.active,
+      lastAt: tabAlert.active ? tabAlert.lastAt : 0,
+    };
+  }
+
+  if (Object.keys(changes).length) await chrome.storage.local.set(changes);
+}
+
+function init(){
     injectStyles();
     for (const [kind, tabId] of Object.entries(TAB_IDS)){
       document.getElementById(tabId)?.addEventListener("click", () => clearCategory(kind).catch(() => {}));
@@ -157,7 +175,7 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (changes[STORE_KEY]) render(changes[STORE_KEY].newValue);
-      if (changes[STARTUP_ATTENTION_KEY]) renderStartupAttention(changes[STARTUP_ATTENTION_KEY].newValue);
+      if (changes[STARTUP_ATTENTION_KEY] || changes[TAB_ALERT_ATTENTION_KEY]) renderPatrolAttention().catch(() => {});
     });
     load().catch(() => {});
   }

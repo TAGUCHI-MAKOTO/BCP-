@@ -18,6 +18,7 @@ const BCP_AUTO_ALARM_NAMES = [
 
 const BCP_TAB_UNREAD_KEY = "bcp_tab_unread_v1";
 const BCP_STARTUP_ATTENTION_KEY = "bcp_startup_attention_v1";
+const BCP_TAB_ALERT_ATTENTION_KEY = "bcp_tab_alert_attention_v1";
 const BCP_TAB_DATA_KEYS = {
   quake: "bcp2_quakes",
   warning: "bcp2_warnings",
@@ -203,7 +204,7 @@ chrome.runtime.onInstalled.addListener(() => {
   bcpArmStartupNotificationSuppression();
 });
 
-// ---- BCPサブタブ別の未読重要度判定 v1.3.138 ----
+// ---- BCPサブタブ別の未読重要度判定 v1.3.141 ----
 function bcpTabSeverityLevel(value){
   if (value === true) return 2;
   if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
@@ -255,7 +256,11 @@ function bcpTabWarningSeverity(oldData,newData){
   let severity=0;
   for (const [key,current] of newMap){
     const previous=oldMap.get(key);
-    if (!previous) return 2;
+    if (!previous){
+      if (Number(current.level||0) >= 3) return 2;
+      severity=Math.max(severity,1);
+      continue;
+    }
     if (current.level > previous.level) return 2;
     if (current.level!==previous.level || current.code!==previous.code || current.name!==previous.name || current.status!==previous.status || current.reportDatetime!==previous.reportDatetime){
       severity=Math.max(severity,1);
@@ -290,17 +295,30 @@ async function bcpMarkTabUnread(kind,severity){
   if (!["quake","warning","cyclone"].includes(kind)) return;
   const incoming=bcpTabSeverityLevel(severity);
   if (!incoming) return;
-  const data=await chrome.storage.local.get([BCP_TAB_UNREAD_KEY]);
+  const data=await chrome.storage.local.get([BCP_TAB_UNREAD_KEY, BCP_TAB_ALERT_ATTENTION_KEY]);
   const raw=data[BCP_TAB_UNREAD_KEY]||{};
   const merged=Math.max(bcpTabSeverityLevel(raw[kind]),incoming);
-  await chrome.storage.local.set({
+  const updates={
     [BCP_TAB_UNREAD_KEY]:{
       quake:bcpTabSeverityValue(kind==="quake"?merged:bcpTabSeverityLevel(raw.quake)),
       warning:bcpTabSeverityValue(kind==="warning"?merged:bcpTabSeverityLevel(raw.warning)),
       cyclone:bcpTabSeverityValue(kind==="cyclone"?merged:bcpTabSeverityLevel(raw.cyclone)),
       lastAt:Date.now()
     }
-  });
+  };
+  if (kind==="warning" && incoming>=2){
+    const alertRaw=data[BCP_TAB_ALERT_ATTENTION_KEY]||{};
+    const nextAlert={
+      quake:alertRaw.quake===true,
+      warning:true,
+      cyclone:alertRaw.cyclone===true,
+      active:true,
+      lastAt:Date.now()
+    };
+    nextAlert.active=nextAlert.quake||nextAlert.warning||nextAlert.cyclone;
+    updates[BCP_TAB_ALERT_ATTENTION_KEY]=nextAlert;
+  }
+  await chrome.storage.local.set(updates);
 }
 chrome.storage.onChanged.addListener((changes,area)=>{
   if (area!=="local") return;
