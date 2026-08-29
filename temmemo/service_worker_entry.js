@@ -117,123 +117,122 @@ chrome.runtime.onInstalled.addListener(() => {
   bcpArmStartupNotificationSuppression();
 });
 
-// ---- BCPサブタブ別の新着判定 v1.3.135 ----
-// 既存の🚨注意表示とは別キーで管理するため、BCP画面を開いた時点では消えず、
-// 地震／気象警報／台風の該当サブタブを押したときだけ既読になる。
+// ---- BCPサブタブ別の未読重要度判定 v1.3.138 ----
+function bcpTabSeverityLevel(value){
+  if (value === true) return 2;
+  if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+  if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+  return 0;
+}
+function bcpTabSeverityValue(level){
+  return Number(level) >= 2 ? "alert" : Number(level) === 1 ? "update" : false;
+}
 function bcpTabQuakeId(item){
-  return String(
-    item?.id ||
-    item?.eventId ||
-    `${item?.eventTime || ""}|${item?.epicenter || ""}`
-  );
+  return String(item?.id || item?.eventId || `${item?.eventTime || ""}|${item?.epicenter || ""}`);
 }
-
-function bcpTabHasNewQuake(oldData, newData){
-  if (!oldData?.updatedAt) return false;
-  const oldItems = Array.isArray(oldData?.items) ? oldData.items : [];
-  const newItems = Array.isArray(newData?.items) ? newData.items : [];
-  const oldMap = new Map(
-    oldItems.map((item) => [bcpTabQuakeId(item), Number(item?.intensityScore || 0)])
-  );
-
-  return newItems.some((item) => {
-    const score = Number(item?.intensityScore || 0);
-    if (score < 3) return false;
-    const id = bcpTabQuakeId(item);
-    return !oldMap.has(id) || score > Number(oldMap.get(id) || 0);
-  });
+function bcpTabQuakeSignature(item){
+  return JSON.stringify([item?.eventTime||"",item?.epicenter||"",item?.magnitude||"",item?.maxIntensity||"",item?.reportTime||""]);
 }
-
-function bcpTabWarningKey(item, warning){
-  const area = String(item?.areaCode || item?.id || item?.areaName || "");
-  const phenomenon = String(
-    warning?.phenomenon || warning?.code || warning?.name || ""
-  );
-  return `${area}:${phenomenon}`;
+function bcpTabQuakeSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap = new Map((Array.isArray(oldData?.items)?oldData.items:[]).map((item)=>[bcpTabQuakeId(item),item]));
+  let severity = 0;
+  for (const item of (Array.isArray(newData?.items)?newData.items:[])){
+    const score = Number(item?.intensityScore||0);
+    if (score < 3) continue;
+    const oldItem = oldMap.get(bcpTabQuakeId(item));
+    if (!oldItem) return 2;
+    const oldScore = Number(oldItem?.intensityScore||0);
+    if (score > oldScore) return 2;
+    if (bcpTabQuakeSignature(item) !== bcpTabQuakeSignature(oldItem)) severity = Math.max(severity,1);
+  }
+  return severity;
 }
-
-function bcpTabHasNewWarning(oldData, newData){
-  if (!oldData?.updatedAt) return false;
-  const oldMap = new Map();
-  for (const item of (Array.isArray(oldData?.items) ? oldData.items : [])){
-    for (const warning of (Array.isArray(item?.warnings) ? item.warnings : [])){
-      oldMap.set(bcpTabWarningKey(item, warning), Number(warning?.level || 0));
+function bcpTabWarningKey(item,warning){
+  return `${String(item?.areaCode||item?.id||item?.areaName||"")}:${String(warning?.phenomenon||warning?.code||warning?.name||"")}`;
+}
+function bcpTabWarningMap(data){
+  const map = new Map();
+  for (const item of (Array.isArray(data?.items)?data.items:[])){
+    for (const warning of (Array.isArray(item?.warnings)?item.warnings:[])){
+      map.set(bcpTabWarningKey(item,warning),{
+        level:Number(warning?.level||0),code:String(warning?.code||""),name:String(warning?.name||""),
+        status:String(warning?.status||""),reportDatetime:String(item?.reportDatetime||"")
+      });
     }
   }
-
-  for (const item of (Array.isArray(newData?.items) ? newData.items : [])){
-    for (const warning of (Array.isArray(item?.warnings) ? item.warnings : [])){
-      const key = bcpTabWarningKey(item, warning);
-      const level = Number(warning?.level || 0);
-      if (!oldMap.has(key) || level > Number(oldMap.get(key) || 0)) return true;
+  return map;
+}
+function bcpTabWarningSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap=bcpTabWarningMap(oldData), newMap=bcpTabWarningMap(newData);
+  let severity=0;
+  for (const [key,current] of newMap){
+    const previous=oldMap.get(key);
+    if (!previous) return 2;
+    if (current.level > previous.level) return 2;
+    if (current.level!==previous.level || current.code!==previous.code || current.name!==previous.name || current.status!==previous.status || current.reportDatetime!==previous.reportDatetime){
+      severity=Math.max(severity,1);
     }
   }
-  return false;
+  for (const key of oldMap.keys()) if (!newMap.has(key)) severity=Math.max(severity,1);
+  return severity;
 }
-
 function bcpTabCycloneId(item){
-  return String(item?.id || item?.number || item?.slotId || item?.displayName || "");
+  return String(item?.id||item?.number||item?.slotId||item?.displayName||"");
 }
-
-function bcpTabCycloneStamp(item){
-  return String(item?.reportDateTime || item?.targetDateTime || "");
+function bcpTabCycloneSignature(item){
+  return JSON.stringify([
+    item?.reportDateTime||"",item?.targetDateTime||"",Number(item?.intensityLevel||0),!!item?.ended,
+    item?.pressure||"",item?.direction||"",item?.speedKmH||"",item?.maxWindMS||"",item?.gustWindMS||"",
+    Array.isArray(item?.forecasts)?item.forecasts:[]
+  ]);
 }
-
-function bcpTabHasNewCyclone(oldData, newData){
-  if (!oldData?.updatedAt) return false;
-  const oldMap = new Map(
-    (Array.isArray(oldData?.items) ? oldData.items : [])
-      .map((item) => [bcpTabCycloneId(item), item])
-  );
-
-  return (Array.isArray(newData?.items) ? newData.items : []).some((item) => {
-    const oldItem = oldMap.get(bcpTabCycloneId(item));
-    if (!oldItem) return true;
-    return (
-      bcpTabCycloneStamp(item) !== bcpTabCycloneStamp(oldItem) ||
-      Number(item?.intensityLevel || 0) !== Number(oldItem?.intensityLevel || 0) ||
-      !!item?.ended !== !!oldItem?.ended
-    );
-  });
+function bcpTabCycloneSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap=new Map((Array.isArray(oldData?.items)?oldData.items:[]).map((item)=>[bcpTabCycloneId(item),item]));
+  let severity=0;
+  for (const item of (Array.isArray(newData?.items)?newData.items:[])){
+    const oldItem=oldMap.get(bcpTabCycloneId(item));
+    if (!oldItem) return 2;
+    if (Number(item?.intensityLevel||0)>Number(oldItem?.intensityLevel||0)) return 2;
+    if (bcpTabCycloneSignature(item)!==bcpTabCycloneSignature(oldItem)) severity=Math.max(severity,1);
+  }
+  return severity;
 }
-
-async function bcpMarkTabUnread(kind){
-  if (!["quake", "warning", "cyclone"].includes(kind)) return;
-  const data = await chrome.storage.local.get([BCP_TAB_UNREAD_KEY]);
-  const raw = data[BCP_TAB_UNREAD_KEY] || {};
+async function bcpMarkTabUnread(kind,severity){
+  if (!["quake","warning","cyclone"].includes(kind)) return;
+  const incoming=bcpTabSeverityLevel(severity);
+  if (!incoming) return;
+  const data=await chrome.storage.local.get([BCP_TAB_UNREAD_KEY]);
+  const raw=data[BCP_TAB_UNREAD_KEY]||{};
+  const merged=Math.max(bcpTabSeverityLevel(raw[kind]),incoming);
   await chrome.storage.local.set({
-    [BCP_TAB_UNREAD_KEY]: {
-      quake: raw.quake === true || kind === "quake",
-      warning: raw.warning === true || kind === "warning",
-      cyclone: raw.cyclone === true || kind === "cyclone",
-      lastAt: Date.now(),
-    },
+    [BCP_TAB_UNREAD_KEY]:{
+      quake:bcpTabSeverityValue(kind==="quake"?merged:bcpTabSeverityLevel(raw.quake)),
+      warning:bcpTabSeverityValue(kind==="warning"?merged:bcpTabSeverityLevel(raw.warning)),
+      cyclone:bcpTabSeverityValue(kind==="cyclone"?merged:bcpTabSeverityLevel(raw.cyclone)),
+      lastAt:Date.now()
+    }
   });
 }
-
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local") return;
-
-  const detected = [];
-  const quakeChange = changes[BCP_TAB_DATA_KEYS.quake];
-  if (quakeChange && bcpTabHasNewQuake(quakeChange.oldValue, quakeChange.newValue)){
-    detected.push("quake");
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if (area!=="local") return;
+  const detected=[];
+  if (changes[BCP_TAB_DATA_KEYS.quake]){
+    const s=bcpTabQuakeSeverity(changes[BCP_TAB_DATA_KEYS.quake].oldValue,changes[BCP_TAB_DATA_KEYS.quake].newValue);
+    if (s) detected.push(["quake",s]);
   }
-
-  const warningChange = changes[BCP_TAB_DATA_KEYS.warning];
-  if (warningChange && bcpTabHasNewWarning(warningChange.oldValue, warningChange.newValue)){
-    detected.push("warning");
+  if (changes[BCP_TAB_DATA_KEYS.warning]){
+    const s=bcpTabWarningSeverity(changes[BCP_TAB_DATA_KEYS.warning].oldValue,changes[BCP_TAB_DATA_KEYS.warning].newValue);
+    if (s) detected.push(["warning",s]);
   }
-
-  const cycloneChange = changes[BCP_TAB_DATA_KEYS.cyclone];
-  if (cycloneChange && bcpTabHasNewCyclone(cycloneChange.oldValue, cycloneChange.newValue)){
-    detected.push("cyclone");
+  if (changes[BCP_TAB_DATA_KEYS.cyclone]){
+    const s=bcpTabCycloneSeverity(changes[BCP_TAB_DATA_KEYS.cyclone].oldValue,changes[BCP_TAB_DATA_KEYS.cyclone].newValue);
+    if (s) detected.push(["cyclone",s]);
   }
-
   if (!detected.length) return;
-  bcpTabUnreadQueue = bcpTabUnreadQueue
-    .then(async () => {
-      for (const kind of detected) await bcpMarkTabUnread(kind);
-    })
-    .catch(() => {});
+  bcpTabUnreadQueue=bcpTabUnreadQueue.then(async()=>{
+    for (const [kind,severity] of detected) await bcpMarkTabUnread(kind,severity);
+  }).catch(()=>{});
 });

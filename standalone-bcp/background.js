@@ -710,53 +710,123 @@ async function refreshCyclones(){
 }
 "use strict";
 
-function bcpNormalizeAttentionV104(attention){
-  const raw = attention && typeof attention === "object" ? attention : {};
-  const quake = raw.quake === true;
-  const warning = raw.warning === true;
-  const cyclone = raw.cyclone === true;
-  const count = [quake, warning, cyclone].filter(Boolean).length;
-  return {
-    count,
-    lastAt: count ? Number(raw.lastAt || 0) : 0,
-    quake,
-    warning,
-    cyclone
-  };
+function bcpAttentionLevel(value){
+  if (value === true) return 2;
+  if (value === "alert" || value === "red" || Number(value) >= 2) return 2;
+  if (value === "update" || value === "yellow" || Number(value) === 1) return 1;
+  return 0;
+}
+function bcpAttentionValue(level){
+  return Number(level) >= 2 ? "alert" : Number(level) === 1 ? "update" : false;
+}
+function bcpNormalizeAttentionV109(attention){
+  const raw=attention&&typeof attention==="object"?attention:{};
+  const q=bcpAttentionLevel(raw.quake),w=bcpAttentionLevel(raw.warning),c=bcpAttentionLevel(raw.cyclone);
+  const count=[q,w,c].filter((v)=>v>0).length;
+  return {count,lastAt:count?Number(raw.lastAt||0):0,quake:bcpAttentionValue(q),warning:bcpAttentionValue(w),cyclone:bcpAttentionValue(c)};
 }
 
-addAttention = async function(kind){
-  if (!["quake", "warning", "cyclone"].includes(kind)) return;
-  const data = await chrome.storage.local.get([STORE.attention]);
-  const current = bcpNormalizeAttentionV104(data[STORE.attention]);
-  const next = bcpNormalizeAttentionV104({
-    ...current,
-    [kind]: true,
-    lastAt: Date.now()
-  });
-  next.lastAt = Date.now();
-  await chrome.storage.local.set({ [STORE.attention]: next });
+// 旧refresh内の addAttention(kind) はここでは表示状態を直接変えない。
+// 保存データ差分を下のlistenerで分類し、明示severity付き呼び出しだけ反映する。
+addAttention=async function(kind,severity){
+  if (!["quake","warning","cyclone"].includes(kind)) return;
+  const incoming=bcpAttentionLevel(severity);
+  if (!incoming) return;
+  const data=await chrome.storage.local.get([STORE.attention]);
+  const current=bcpNormalizeAttentionV109(data[STORE.attention]);
+  const merged=Math.max(bcpAttentionLevel(current[kind]),incoming);
+  const next=bcpNormalizeAttentionV109({...current,[kind]:bcpAttentionValue(merged),lastAt:Date.now()});
+  next.lastAt=Date.now();
+  await chrome.storage.local.set({[STORE.attention]:next});
   await syncActionBadge(next);
 };
 
-clearAttention = async function(kind){
-  let category = ["quake", "warning", "cyclone"].includes(kind) ? kind : "";
+clearAttention=async function(kind){
+  let category=["quake","warning","cyclone"].includes(kind)?kind:"";
   if (!category){
-    const data = await chrome.storage.local.get([STORE.view]);
-    category = data[STORE.view] === "warning"
-      ? "warning"
-      : data[STORE.view] === "cyclone"
-        ? "cyclone"
-        : "quake";
+    const data=await chrome.storage.local.get([STORE.view]);
+    category=data[STORE.view]==="warning"?"warning":data[STORE.view]==="cyclone"?"cyclone":"quake";
   }
-
-  const data = await chrome.storage.local.get([STORE.attention]);
-  const current = bcpNormalizeAttentionV104(data[STORE.attention]);
-  const next = bcpNormalizeAttentionV104({ ...current, [category]: false });
-  if (next.count > 0) next.lastAt = current.lastAt || Date.now();
-  await chrome.storage.local.set({ [STORE.attention]: next });
+  const data=await chrome.storage.local.get([STORE.attention]);
+  const current=bcpNormalizeAttentionV109(data[STORE.attention]);
+  const next=bcpNormalizeAttentionV109({...current,[category]:false});
+  if (next.count>0) next.lastAt=current.lastAt||Date.now();
+  await chrome.storage.local.set({[STORE.attention]:next});
   await syncActionBadge(next);
 };
+
+function bcpStandaloneQuakeId(item){return String(item?.id||item?.eventId||`${item?.eventTime||""}|${item?.epicenter||""}`)}
+function bcpStandaloneQuakeSig(item){return JSON.stringify([item?.eventTime||"",item?.epicenter||"",item?.magnitude||"",item?.maxIntensity||"",item?.reportTime||""])}
+function bcpStandaloneQuakeSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap=new Map((Array.isArray(oldData?.items)?oldData.items:[]).map((item)=>[bcpStandaloneQuakeId(item),item]));
+  let severity=0;
+  for (const item of (Array.isArray(newData?.items)?newData.items:[])){
+    const score=Number(item?.intensityScore||0); if (score<3) continue;
+    const oldItem=oldMap.get(bcpStandaloneQuakeId(item));
+    if (!oldItem) return 2;
+    if (score>Number(oldItem?.intensityScore||0)) return 2;
+    if (bcpStandaloneQuakeSig(item)!==bcpStandaloneQuakeSig(oldItem)) severity=Math.max(severity,1);
+  }
+  return severity;
+}
+function bcpStandaloneWarningKey(item,warning){return `${String(item?.areaCode||item?.id||item?.areaName||"")}:${String(warning?.phenomenon||warning?.code||warning?.name||"")}`}
+function bcpStandaloneWarningMap(data){
+  const map=new Map();
+  for (const item of (Array.isArray(data?.items)?data.items:[])){
+    for (const warning of (Array.isArray(item?.warnings)?item.warnings:[])){
+      map.set(bcpStandaloneWarningKey(item,warning),{
+        level:Number(warning?.level||0),code:String(warning?.code||""),name:String(warning?.name||""),
+        status:String(warning?.status||""),reportDatetime:String(item?.reportDatetime||"")
+      });
+    }
+  }
+  return map;
+}
+function bcpStandaloneWarningSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap=bcpStandaloneWarningMap(oldData),newMap=bcpStandaloneWarningMap(newData); let severity=0;
+  for (const [key,current] of newMap){
+    const previous=oldMap.get(key);
+    if (!previous) return 2;
+    if (current.level>previous.level) return 2;
+    if (current.level!==previous.level||current.code!==previous.code||current.name!==previous.name||current.status!==previous.status||current.reportDatetime!==previous.reportDatetime) severity=Math.max(severity,1);
+  }
+  for (const key of oldMap.keys()) if (!newMap.has(key)) severity=Math.max(severity,1);
+  return severity;
+}
+function bcpStandaloneCycloneId(item){return String(item?.id||item?.number||item?.slotId||item?.displayName||"")}
+function bcpStandaloneCycloneSig(item){return JSON.stringify([
+  item?.reportDateTime||"",item?.targetDateTime||"",Number(item?.intensityLevel||0),!!item?.ended,item?.pressure||"",
+  item?.direction||"",item?.speedKmH||"",item?.maxWindMS||"",item?.gustWindMS||"",Array.isArray(item?.forecasts)?item.forecasts:[]
+])}
+function bcpStandaloneCycloneSeverity(oldData,newData){
+  if (!oldData?.updatedAt) return 0;
+  const oldMap=new Map((Array.isArray(oldData?.items)?oldData.items:[]).map((item)=>[bcpStandaloneCycloneId(item),item])); let severity=0;
+  for (const item of (Array.isArray(newData?.items)?newData.items:[])){
+    const oldItem=oldMap.get(bcpStandaloneCycloneId(item));
+    if (!oldItem) return 2;
+    if (Number(item?.intensityLevel||0)>Number(oldItem?.intensityLevel||0)) return 2;
+    if (bcpStandaloneCycloneSig(item)!==bcpStandaloneCycloneSig(oldItem)) severity=Math.max(severity,1);
+  }
+  return severity;
+}
+
+chrome.storage.onChanged.addListener((changes,area)=>{
+  if (area!=="local") return;
+  const detected=[];
+  if (changes[STORE.quakes]){
+    const s=bcpStandaloneQuakeSeverity(changes[STORE.quakes].oldValue,changes[STORE.quakes].newValue); if (s) detected.push(["quake",s]);
+  }
+  if (changes[STORE.warnings]){
+    const s=bcpStandaloneWarningSeverity(changes[STORE.warnings].oldValue,changes[STORE.warnings].newValue); if (s) detected.push(["warning",s]);
+  }
+  if (changes[STORE.cyclones]){
+    const s=bcpStandaloneCycloneSeverity(changes[STORE.cyclones].oldValue,changes[STORE.cyclones].newValue); if (s) detected.push(["cyclone",s]);
+  }
+  if (!detected.length) return;
+  (async()=>{for (const [kind,severity] of detected) await addAttention(kind,severity)})().catch(()=>{});
+});
 async function setupAlarms(){
   const settings = await getSettings();
   await Promise.allSettled([

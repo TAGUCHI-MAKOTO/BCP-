@@ -110,3 +110,26 @@ input[type=number],select{background:var(--panel2);color:var(--text);border:1px 
   .badge{background:#00000012}
   .link{color:#1d4ed8}
 }
+
+
+/* v1.0.9: unread severity glow */
+.tab.hasNewUpdate{
+  border-color:#facc15;
+  box-shadow:0 0 0 1px rgba(250,204,21,.75) inset,0 0 8px rgba(250,204,21,.75),0 0 16px rgba(245,158,11,.38);
+  animation:bcpTabGlow 1.35s ease-in-out infinite;
+}
+.tab.on.hasNewUpdate{background:#26364d;border-color:#facc15}
+.tab.hasNewAlert{
+  border-color:#ef4444;
+  box-shadow:0 0 0 1px rgba(239,68,68,.82) inset,0 0 9px rgba(239,68,68,.82),0 0 19px rgba(220,38,38,.48);
+  animation:bcpTabGlowRed 1.05s ease-in-out infinite;
+}
+.tab.on.hasNewAlert{background:#26364d;border-color:#ef4444}
+@keyframes bcpTabGlowRed{
+  0%,100%{box-shadow:0 0 0 1px rgba(239,68,68,.62) inset,0 0 6px rgba(239,68,68,.52),0 0 12px rgba(220,38,38,.24)}
+  50%{box-shadow:0 0 0 1px rgba(248,113,113,.98) inset,0 0 13px rgba(248,113,113,.98),0 0 25px rgba(220,38,38,.66)}
+}
+@media (prefers-reduced-motion:reduce){
+  .tab.hasNewUpdate{animation:none;box-shadow:0 0 0 1px rgba(250,204,21,.85) inset,0 0 10px rgba(250,204,21,.8)}
+  .tab.hasNewAlert{animation:none;box-shadow:0 0 0 1px rgba(239,68,68,.9) inset,0 0 11px rgba(239,68,68,.9)}
+}

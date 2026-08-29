@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "BCPアラート（分離版）",
-  "version": "1.0.8",
-  "description": "BCP分離版。v1.0.8で自動更新ON/OFF切替時の「保存中」表示を廃止し、スイッチが即座に自然に切り替わるよう改善。",
+  "version": "1.0.9",
+  "description": "BCP分離版。v1.0.9でTab未読表示を2段階化。新規事象・警戒レベル/勢力上昇は赤、同レベルの情報更新は黄色で発光し、黄色未読中に赤対象が来た場合は赤へ昇格。",
   "permissions": [
     "storage",
     "sidePanel",
