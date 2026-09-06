@@ -1,6 +1,6 @@
-// v1.3.144
-// 気象警報Tabは「警報以上が新しく発表された最初の1回」だけ赤点滅する。
-// 注意報、警報の内容更新、警報レベル上昇、解除、注意報への低下では点滅しない。
+// v1.3.145
+// 気象警報Tabは、新規の警報以上または警報レベル上昇時だけ赤点滅する。
+// 注意報、同レベルの警報内容更新、解除、注意報への低下では点滅しない。
 // 台風・地震の未読判定は従来どおり。
 importScripts("service_worker_entry.js");
 
@@ -15,13 +15,13 @@ bcpTabWarningSeverity = function(oldData, newData){
     const currentLevel = Number(current?.level || 0);
     const previousLevel = Number(previous?.level || 0);
 
-    // 新規に警報以上が出た場合、または注意報から警報以上へ移行した最初の1回だけ赤点滅。
-    if (currentLevel >= 3 && (!previous || previousLevel < 3)){
+    // 新規の警報以上、注意報→警報以上、警報レベル上昇は赤点滅。
+    if (currentLevel >= 3 && (!previous || currentLevel > previousLevel)){
       return 2;
     }
   }
 
-  // 警報発表後の内容更新・レベル上昇・解除・低下、注意報のみの変化はすべて無点滅。
+  // 注意報・同レベル更新・解除・低下はすべて無点滅。
   return 0;
 };
 
